@@ -578,7 +578,7 @@ func (e *State) walkFunc(node *parse.FuncNode, T miniprofiler.Timer) *Results {
 	var res *Results
 	T.Step("func: "+node.Name, func(T miniprofiler.Timer) {
 		var in []reflect.Value
-		for _, a := range node.Args {
+		for i, a := range node.Args {
 			var v interface{}
 			switch t := a.(type) {
 			case *parse.StringNode:
@@ -593,6 +593,15 @@ func (e *State) walkFunc(node *parse.FuncNode, T miniprofiler.Timer) *Results {
 				v = extractScalar(e.walkBinary(t, T))
 			default:
 				panic(fmt.Errorf("expr: unknown func arg type"))
+			}
+			if f, ok := v.(float64); ok && node.F.Args[i] == parse.TypeNumberSet {
+				v = &Results{
+					Results: ResultSlice{
+						&Result{
+							Value: Number(f),
+						},
+					},
+				}
 			}
 			in = append(in, reflect.ValueOf(v))
 		}

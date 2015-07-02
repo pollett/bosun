@@ -224,3 +224,31 @@ func TestQueryExpr(t *testing.T) {
 		}
 	}
 }
+
+func TestScalarPromotion(t *testing.T) {
+	tests := map[string]map[string]Value{
+		`abs(-1)`: {"": Number(1)},
+	}
+
+	for exprText, expected := range tests {
+		e, err := New(exprText)
+		if err != nil {
+			t.Fatal(err)
+		}
+		results, _, err := e.Execute(nil, nil, nil, nil, nil, queryTime, 0, false, nil, nil, nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, r := range results.Results {
+			tag := r.Group.Tags()
+			ex := expected[tag]
+			if ex == nil {
+				t.Errorf("missing tag %v", tag)
+				continue
+			}
+			if ex != r.Value {
+				t.Errorf("unmatched values in %v", tag)
+			}
+		}
+	}
+}

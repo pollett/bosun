@@ -25,7 +25,7 @@ This section documents Bosun's expression language, which is used to define the 
 There are three data types in Bosun's expression language:
 
  1. **Scalar**: This is the simplest type, it is a single numeric value with no group associated with it. Keep in mind that an empty group, `{}` is still a group.
- 2. **NumberSet**: A number set is a group of tagged numeric values with one value per unique grouping.
+ 2. **NumberSet**: A number set is a group of tagged numeric values with one value per unique grouping. As a special case, a **scalar** may be used in place of a **numberSet** with a single member with an empty group.
  3. **SeriesSet**: A series is an array of timestamp-value pairs and an associated group.
 
 In the vast majority of your alerts you will getting ***seriesSets*** back from your time series database and ***reducing*** them into ***numberSets***.
@@ -205,7 +205,7 @@ Diff returns the last point of each series minus the first point.
 
 Returns the first (least recent) data point in each series.
 
-## forecastlr(seriesSet, y_val scalar) numberSet
+## forecastlr(seriesSet, y_val numberSet|scalar) numberSet
 
 Returns the number of seconds until a linear regression of each series will reach y_val.
 
@@ -229,7 +229,7 @@ Returns the median value of each series, same as calling percentile(series, .5).
 
 Returns the minimum value of each series, same as calling percentile(series, 0).
 
-## percentile(seriesSet, p scalar) numberSet
+## percentile(seriesSet, p numberSet|scalar) numberSet
 
 Returns the value from each series at the percentile p. Min and Max can be simulated using `p <= 0` and `p >= 1`, respectively.
 

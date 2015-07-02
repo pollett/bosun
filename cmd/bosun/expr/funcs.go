@@ -160,7 +160,7 @@ var builtins = map[string]parse.Func{
 		F:      First,
 	},
 	"forecastlr": {
-		Args:   []parse.FuncType{parse.TypeSeriesSet, parse.TypeScalar},
+		Args:   []parse.FuncType{parse.TypeSeriesSet, parse.TypeNumberSet},
 		Return: parse.TypeNumberSet,
 		Tags:   tagFirst,
 		F:      Forecast_lr,
@@ -196,7 +196,7 @@ var builtins = map[string]parse.Func{
 		F:      Min,
 	},
 	"percentile": {
-		Args:   []parse.FuncType{parse.TypeSeriesSet, parse.TypeScalar},
+		Args:   []parse.FuncType{parse.TypeSeriesSet, parse.TypeNumberSet},
 		Return: parse.TypeNumberSet,
 		Tags:   tagFirst,
 		F:      Percentile,
@@ -852,7 +852,7 @@ func Change(e *State, T miniprofiler.Timer, query, sduration, eduration string) 
 	if err != nil {
 		return
 	}
-	r, err = reduce(e, T, r, change, (sd - ed).Seconds())
+	r, err = reduce(e, T, r, change, fromScalar((sd - ed).Seconds()))
 	return
 }
 
@@ -860,20 +860,41 @@ func change(dps Series, args ...float64) float64 {
 	return avg(dps) * args[0]
 }
 
-func reduce(e *State, T miniprofiler.Timer, series *Results, F func(Series, ...float64) float64, args ...float64) (*Results, error) {
+func fromScalar(f float64) *Results {
+	return &Results{
+		Results: ResultSlice{
+			&Result{
+				Value: Number(f),
+			},
+		},
+	}
+}
+
+func reduce(e *State, T miniprofiler.Timer, series *Results, F func(Series, ...float64) float64, args ...*Results) (*Results, error) {
 	res := *series
 	res.Results = nil
 	for _, s := range series.Results {
-		switch t := s.Value.(type) {
-		case Series:
-			if len(t) == 0 {
-				continue
-			}
-			s.Value = Number(F(t, args...))
-			res.Results = append(res.Results, s)
-		default:
-			panic(fmt.Errorf("expr: expected a series"))
+		t := s.Value.(Series)
+		if len(t) == 0 {
+			continue
 		}
+		var floats []float64
+		for _, num := range args {
+			for _, n := range num.Results {
+				if len(n.Group) == 0 || s.Group.Overlaps(n.Group) {
+					floats = append(floats, float64(n.Value.(Number)))
+					break
+				}
+			}
+		}
+		if len(floats) != len(args) {
+			if !series.IgnoreUnjoined {
+				return nil, fmt.Errorf("unjoined groups for %s", s.Group)
+			}
+			continue
+		}
+		s.Value = Number(F(t, floats...))
+		res.Results = append(res.Results, s)
 	}
 	return &res, nil
 }
@@ -1048,7 +1069,7 @@ func (e *State) since(dps Series, args ...float64) (a float64) {
 	return s.Seconds()
 }
 
-func Forecast_lr(e *State, T miniprofiler.Timer, series *Results, y float64) (r *Results, err error) {
+func Forecast_lr(e *State, T miniprofiler.Timer, series *Results, y *Results) (r *Results, err error) {
 	return reduce(e, T, series, e.forecast_lr, y)
 }
 
@@ -1085,20 +1106,20 @@ func (e *State) forecast_lr(dps Series, args ...float64) float64 {
 	return s.Seconds()
 }
 
-func Percentile(e *State, T miniprofiler.Timer, series *Results, p float64) (r *Results, err error) {
+func Percentile(e *State, T miniprofiler.Timer, series *Results, p *Results) (r *Results, err error) {
 	return reduce(e, T, series, percentile, p)
 }
 
 func Min(e *State, T miniprofiler.Timer, series *Results) (r *Results, err error) {
-	return reduce(e, T, series, percentile, 0)
+	return reduce(e, T, series, percentile, fromScalar(0))
 }
 
 func Median(e *State, T miniprofiler.Timer, series *Results) (r *Results, err error) {
-	return reduce(e, T, series, percentile, .5)
+	return reduce(e, T, series, percentile, fromScalar(.5))
 }
 
 func Max(e *State, T miniprofiler.Timer, series *Results) (r *Results, err error) {
-	return reduce(e, T, series, percentile, 1)
+	return reduce(e, T, series, percentile, fromScalar(1))
 }
 
 // percentile returns the value at the corresponding percentile between 0 and 1.
