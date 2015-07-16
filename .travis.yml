@@ -17,3 +17,4 @@ deploy:
   on:
     repo: Skyscanner/bosun
     branch: deploy/sandbox
+    tags: true
