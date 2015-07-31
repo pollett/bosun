@@ -57,6 +57,7 @@ const (
 	dbStatus           = "status"
 	dbMetadata         = "metadata"
 	dbIncidents        = "incidents"
+	dbInterval				 = "interval"
 )
 
 func (s *Schedule) save() {
@@ -76,6 +77,7 @@ func (s *Schedule) save() {
 		dbStatus:        s.status,
 		dbMetadata:      s.Metadata,
 		dbIncidents:     s.Incidents,
+	  dbInterval:			 s.Interval,
 	}
 	tostore := make(map[string][]byte)
 	for name, data := range store {
@@ -232,6 +234,12 @@ func (s *Schedule) RestoreState() error {
 	if err := decode(dbMetadata, &s.Metadata); err != nil {
 		log.Println(dbMetadata, err)
 	}
+	if err := decode(dbInterval, &s.Interval); err != nil {
+		log.Println(dbInterval, err)
+	}
+	log.Println("here",s.Interval.Interval)
+
+
 	if s.maxIncidentId == 0 {
 		s.createHistoricIncidents()
 	}

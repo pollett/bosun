@@ -50,6 +50,7 @@ type Schedule struct {
 	maxIncidentId uint64
 	incidentLock  sync.Mutex
 	db            *bolt.DB
+	Interval      IntervalState
 }
 
 func init() {
@@ -412,6 +413,7 @@ func (s *Schedule) Init(c *conf.Conf) error {
 	s.Incidents = make(map[uint64]*Incident)
 	s.status = make(States)
 	s.Search = search.NewSearch()
+	s.Interval = IntervalState{}
 	if c.StateFile != "" {
 		s.db, err = bolt.Open(c.StateFile, 0600, nil)
 		if err != nil {
@@ -452,6 +454,8 @@ func (s *Schedule) Run() error {
 	}
 	go s.Poll()
 	interval := uint64(0)
+	interval = s.Interval.Interval
+	log.Println("last time we checked %v",s.LastCheck)
 	for {
 		wait := time.After(s.Conf.CheckFrequency)
 		log.Println("starting check")
@@ -461,9 +465,13 @@ func (s *Schedule) Run() error {
 			log.Println(err)
 		}
 		log.Printf("check took %v\n", dur)
+		log.Printf("Current interval  %v\n", interval)
+
 		s.LastCheck = now
 		<-wait
 		interval++
+		s.Interval.Interval=interval
+		s.Interval.LastRun=time.Now()
 	}
 }
 
@@ -518,6 +526,11 @@ func init() {
 		"0=Ping responded before timeout. 1=Ping did not respond before 5 second timeout.")
 	metadata.AddMetricMeta("bosun.actions", metadata.Gauge, metadata.Count,
 		"The running count of actions performed by individual users (Closed alert, Acknowledged alert, etc).")
+}
+
+type IntervalState struct {
+   Interval  uint64
+	 LastRun time.Time
 }
 
 type State struct {
