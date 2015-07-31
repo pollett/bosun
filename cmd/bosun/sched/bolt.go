@@ -237,7 +237,7 @@ func (s *Schedule) RestoreState() error {
 	if err := decode(dbInterval, &s.Interval); err != nil {
 		log.Println(dbInterval, err)
 	}
-	log.Println("here",s.Interval.Interval)
+	log.Println("here",s.Interval.Counter)
 
 
 	if s.maxIncidentId == 0 {

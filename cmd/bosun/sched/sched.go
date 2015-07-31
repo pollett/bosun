@@ -453,9 +453,15 @@ func (s *Schedule) Run() error {
 		go s.PingHosts()
 	}
 	go s.Poll()
-	interval := uint64(0)
-	interval = s.Interval.Interval
-	log.Println("last time we checked %v",s.LastCheck)
+	interval := s.Interval.Counter
+	log.Printf("Time of last check %v \n",s.Interval.LastRun)
+	ts :=time.Since(s.Interval.LastRun)
+	log.Printf("Time Elapsed %v \n",ts)
+	if ts < s.Conf.CheckFrequency  {
+		log.Println("sleeping")
+		time.Sleep(s.Conf.CheckFrequency - ts)
+		log.Println("After sleep")
+	}
 	for {
 		wait := time.After(s.Conf.CheckFrequency)
 		log.Println("starting check")
@@ -468,10 +474,11 @@ func (s *Schedule) Run() error {
 		log.Printf("Current interval  %v\n", interval)
 
 		s.LastCheck = now
+		s.Interval.LastRun=time.Now()
+
 		<-wait
 		interval++
-		s.Interval.Interval=interval
-		s.Interval.LastRun=time.Now()
+		s.Interval.Counter=interval
 	}
 }
 
@@ -529,7 +536,7 @@ func init() {
 }
 
 type IntervalState struct {
-   Interval  uint64
+   Counter  uint64
 	 LastRun time.Time
 }
 

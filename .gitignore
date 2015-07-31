@@ -1,1 +1,3 @@
 cmd/bosun/dev.conf
+cmd/bosun/bosun
+cmd/bosun.state
