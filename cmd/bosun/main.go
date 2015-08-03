@@ -125,6 +125,7 @@ func main() {
 	go func() { log.Fatal(web.Listen(c.HTTPListen, *flagDev, c.TSDBHost)) }()
 	go func() {
 		if !*flagNoChecks {
+			log.Println("in main")
 			log.Fatal(sched.Run())
 		}
 	}()
