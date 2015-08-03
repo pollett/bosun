@@ -224,6 +224,7 @@ type Alert struct {
 	UnjoinedOK       bool `json:",omitempty"`
 	Log              bool
 	RunEvery         int
+	RunAt						 string
 	returnType       eparse.FuncType
 
 	template string
@@ -840,6 +841,9 @@ func (c *Conf) loadAlert(s *parse.SectionNode) {
 			if err != nil {
 				c.error(err)
 			}
+		case "runAt":
+				a.RunAt = v
+
 		default:
 			c.errorf("unknown key %s", p.key)
 		}

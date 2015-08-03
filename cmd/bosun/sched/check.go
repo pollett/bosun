@@ -5,6 +5,7 @@ import (
 	"log"
 	"math"
 	"time"
+	"regexp"
 
 	"bosun.org/_third_party/github.com/MiniProfiler/go/miniprofiler"
 	"bosun.org/cmd/bosun/cache"
@@ -370,7 +371,16 @@ func (s *Schedule) Check(T miniprofiler.Timer, now time.Time, interval uint64) (
 		r.Events[ak] = &Event{Status: StUnknown}
 	}
 	for _, a := range s.Conf.OrderedAlerts {
-		if interval%uint64(a.RunEvery) == 0 {
+		if a.RunAt != "" {
+      currentTime:=time.Now().Format(time.ANSIC)
+			matched,err:=regexp.MatchString(a.RunAt,currentTime)
+			if err !=nil {
+				log.Printf("Problem with regexp %v",a.RunAt)
+				log.Println(err)
+		  } else if  matched {
+				s.CheckAlert(T, r, a)
+			}
+  	} else if interval%uint64(a.RunEvery) == 0 {
 			s.CheckAlert(T, r, a)
 		}
 	}
