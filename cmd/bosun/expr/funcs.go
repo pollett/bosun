@@ -9,6 +9,7 @@ import (
 	"strconv"
 	"strings"
 	"time"
+	"log"
 
 	"bosun.org/_third_party/github.com/GaryBoone/GoStats/stats"
 	"bosun.org/_third_party/github.com/MiniProfiler/go/miniprofiler"
@@ -95,6 +96,12 @@ var Graphite = map[string]parse.Func{
 		Return: parse.TypeSeriesSet,
 		Tags:   graphiteTagQuery,
 		F:      GraphiteQuery,
+	},
+	"graphiteBandRange": {
+		Args:   []parse.FuncType{parse.TypeString, parse.TypeString, parse.TypeString, parse.TypeString, parse.TypeString, parse.TypeScalar},
+		Return: parse.TypeSeriesSet,
+		Tags:   graphiteRangeTagQuery,
+		F:      GraphiteBandRange,
 	},
 }
 
@@ -533,6 +540,87 @@ func GraphiteBand(e *State, T miniprofiler.Timer, query, duration, period, forma
 	return
 }
 
+
+func GraphiteBandRange(e *State, T miniprofiler.Timer, query, rangeStart, rangeEnd, period, format string, num float64) (r *Results, err error) {
+	r = new(Results)
+	r.IgnoreOtherUnjoined = true
+	r.IgnoreUnjoined = true
+	T.Step("graphiteBand", func(T miniprofiler.Timer) {
+		var from, to, p opentsdb.Duration
+		from, err = opentsdb.ParseDuration(rangeStart)
+		if err != nil {
+			return
+		}
+
+		to, err = opentsdb.ParseDuration(rangeEnd)
+		if err != nil {
+			return
+		}
+		p, err = opentsdb.ParseDuration(period)
+		if err != nil {
+			return
+		}
+		if num < 1 || num > 100 {
+			err = fmt.Errorf("expr: Band: num out of bounds")
+		}
+		req := &graphite.Request{
+			Targets: []string{query},
+		}
+		now := e.now
+		req.End = &now
+		st := e.now.Add(-time.Duration(from))
+		req.Start = &st
+		for i := 0; i < int(num); i++ {
+			now = now.Add(time.Duration(-p))
+			//req.End = &now
+			end := now.Add(time.Duration(-to))
+			req.End = &end
+			st := now.Add(time.Duration(-from))
+			req.Start = &st
+			log.Printf("Executing graphite band  st %v end %v \n", st,end)
+			var s graphite.Response
+			s, err = timeGraphiteRequest(e, T, req)
+			if err != nil {
+				return
+			}
+			formatTags := strings.Split(format, ".")
+			var results []*Result
+			results, err = parseGraphiteResponse(req, &s, formatTags)
+			if err != nil {
+				return
+			}
+			if i == 0 {
+				r.Results = results
+			} else {
+				// different graphite requests might return series with different id's.
+				// i.e. a different set of tagsets.  merge the data of corresponding tagsets
+				for _, result := range results {
+					updateKey := -1
+					for j, existing := range r.Results {
+						if result.Group.Equal(existing.Group) {
+							updateKey = j
+							break
+						}
+					}
+					if updateKey == -1 {
+						// result tagset is new
+						r.Results = append(r.Results, result)
+						updateKey = len(r.Results) - 1
+					}
+					for k, v := range result.Value.(Series) {
+						r.Results[updateKey].Value.(Series)[k] = v
+					}
+				}
+			}
+		}
+	})
+	if err != nil {
+		return nil, fmt.Errorf("graphiteBand: %v", err)
+	}
+	return
+}
+
+
 func bandTSDB(e *State, T miniprofiler.Timer, query, duration, period string, num float64, rfunc func(*Results, *opentsdb.Response) error) (r *Results, err error) {
 	r = new(Results)
 	r.IgnoreOtherUnjoined = true
@@ -740,6 +828,17 @@ func GraphiteQuery(e *State, T miniprofiler.Timer, query string, sduration, edur
 func graphiteTagQuery(args []parse.Node) (parse.Tags, error) {
 	t := make(parse.Tags)
 	n := args[3].(*parse.StringNode)
+	for _, s := range strings.Split(n.Text, ".") {
+		if s != "" {
+			t[s] = struct{}{}
+		}
+	}
+	return t, nil
+}
+
+func graphiteRangeTagQuery(args []parse.Node) (parse.Tags, error) {
+	t := make(parse.Tags)
+	n := args[4].(*parse.StringNode)
 	for _, s := range strings.Split(n.Text, ".") {
 		if s != "" {
 			t[s] = struct{}{}
