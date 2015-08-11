@@ -9,7 +9,6 @@ import (
 	"strconv"
 	"strings"
 	"time"
-	"log"
 
 	"bosun.org/_third_party/github.com/GaryBoone/GoStats/stats"
 	"bosun.org/_third_party/github.com/MiniProfiler/go/miniprofiler"
@@ -577,7 +576,6 @@ func GraphiteBandRange(e *State, T miniprofiler.Timer, query, rangeStart, rangeE
 			req.End = &end
 			st := now.Add(time.Duration(-from))
 			req.Start = &st
-			log.Printf("Executing graphite band  st %v end %v \n", st,end)
 			var s graphite.Response
 			s, err = timeGraphiteRequest(e, T, req)
 			if err != nil {
