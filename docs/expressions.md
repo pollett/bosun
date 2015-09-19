@@ -6,10 +6,10 @@ title: Expression Documentation
 <div class="row">
 <div class="col-sm-3" >
   <div class="sidebar" data-spy="affix" data-offset-top="0" data-offset-bottom="0" markdown="1">
- 
+
  * Some TOC
  {:toc}
- 
+
   </div>
 </div>
 
@@ -25,7 +25,7 @@ This section documents Bosun's expression language, which is used to define the 
 There are three data types in Bosun's expression language:
 
  1. **Scalar**: This is the simplest type, it is a single numeric value with no group associated with it. Keep in mind that an empty group, `{}` is still a group.
- 2. **NumberSet**: A number set is a group of tagged numeric values with one value per unique grouping.
+ 2. **NumberSet**: A number set is a group of tagged numeric values with one value per unique grouping. As a special case, a **scalar** may be used in place of a **numberSet** with a single member with an empty group.
  3. **SeriesSet**: A series is an array of timestamp-value pairs and an associated group.
 
 In the vast majority of your alerts you will getting ***seriesSets*** back from your time series database and ***reducing*** them into ***numberSets***.
@@ -40,7 +40,7 @@ Various metrics can be combined by operators as long as one group is a subset of
 
 ## Operators
 
-The standard arithmetic (`+`, binary and unary `-`, `*`, `/`), relational (`<`, `>`, `==`, `!=`, `>=`, `<=`), and logical (`&&`, `||`, and unary `!`) operators are supported. The binary operators require the value on at least one side to be a scalar. Arrays will have the operator applied to each element. Examples:
+The standard arithmetic (`+`, binary and unary `-`, `*`, `/`, `%`), relational (`<`, `>`, `==`, `!=`, `>=`, `<=`), and logical (`&&`, `||`, and unary `!`) operators are supported. The binary operators require the value on at least one side to be a scalar or NumberSet. Arrays will have the operator applied to each element. Examples:
 
 * `q("q") + 1`, which adds one to every element of the result of the query `"q"`
 * `-q("q")`, the negation of the results of the query
@@ -52,7 +52,7 @@ The standard arithmetic (`+`, binary and unary `-`, `*`, `/`), relational (`<`, 
 From highest to lowest:
 
 1. `()` and the unary operators `!` and `-`
-1. `*`, `/`
+1. `*`, `/`, `%`
 1. `+`, `-`
 1. `==`, `!=`, `>`, `>=`, `<`, `<=`
 1. `&&`
@@ -79,7 +79,7 @@ alert haproxy_session_limit {
 
 We don't need to understand everything in this alert, but it is worth highlighting a few things to get oriented:
 
- * `haproxy_session_limit` This is the name of the alert, an alert instance is uniquely identified by its alertname and group, i.e `haproxy_session_limit{host=lb,pxname=http-in,tier=2}` 
+ * `haproxy_session_limit` This is the name of the alert, an alert instance is uniquely identified by its alertname and group, i.e `haproxy_session_limit{host=lb,pxname=http-in,tier=2}`
  * `$notes` This is a variable. Variables are not smart, they are just text replacement. If you are familiar with macros in C, this is a similar concept. These variables can be referenced in notification templates which is why we have a generic one for notes
  * `q("sum:haproxy.frontend.scur{host=*,pxname=*,tier=*}", "5m", "")` is an OpenTSDB query function, it returns *N* series, we know each series will have the host, pxname, and tier tag keys in their group based on the query.
  * `max(...)` is a reduction function. It takes each **series** and **reduces** it to a **number** (See the Data types section above).
@@ -114,6 +114,15 @@ This happens when the outer graphite function is something like "avg()" or "sum(
 ### GraphiteBand(query string, duration string, period string, format string, num string) seriesSet
 
 Like band() but for graphite queries.
+
+## InfluxDB Query Functions
+
+### influx(db string, query string, startDuration string, endDuration string) seriesSet
+
+Queries with influxql query on database db from startDuration ago to
+endDuration ago. WHERE clases for `time` are inserted automatically, and
+it is thus an error to specify `time` conditions in query. All tags returned
+by InfluxDB will be included in the results.
 
 ## Logstash Query Functions
 
@@ -193,6 +202,10 @@ All reduction functions take a seriesSet and return a numberSet with one element
 
 Average (arithmetic mean).
 
+## cCount(seriesSet) numberSet
+
+Returns the change count which is the number of times in the series a value was not equal to the immediate previous value. Useful for checking if things that should be at a steady value are "flapping". For example, a series with values [0, 1, 0, 1] would return 3.
+
 ## dev(seriesSet) numberSet
 
 Standard deviation.
@@ -205,7 +218,7 @@ Diff returns the last point of each series minus the first point.
 
 Returns the first (least recent) data point in each series.
 
-## forecastlr(seriesSet, y_val scalar) numberSet
+## forecastlr(seriesSet, y_val numberSet|scalar) numberSet
 
 Returns the number of seconds until a linear regression of each series will reach y_val.
 
@@ -229,7 +242,7 @@ Returns the median value of each series, same as calling percentile(series, .5).
 
 Returns the minimum value of each series, same as calling percentile(series, 0).
 
-## percentile(seriesSet, p scalar) numberSet
+## percentile(seriesSet, p numberSet|scalar) numberSet
 
 Returns the value from each series at the percentile p. Min and Max can be simulated using `p <= 0` and `p >= 1`, respectively.
 
@@ -301,7 +314,7 @@ Alert if more than 50% of servers in a group have ping timeouts
     # so we need to *reduce* each series values of each group into a single number:
     $max_timeout = max($timeout)
     # Max timeout is now a group of results where the value of each group is a number. Since each
-    # group is an alert instance, we need to regroup this into a sigle alert. We can do that by 
+    # group is an alert instance, we need to regroup this into a sigle alert. We can do that by
     # transposing with t()
     $max_timeout_series = t("$max_timeout", "")
     # $max_timeout_series is now a single group with a value of type series. We need to reduce
@@ -344,11 +357,19 @@ Returns series smoothed using Holt-Winters double exponential smoothing. Alpha
 (scalar) is the data smoothing factor. Beta (scalar) is the trend smoothing
 factor.
 
-## dropge(seriesSet, scalar) seriesSet
+## dropg(seriesSet, threshold numberSet|scalar) seriesSet
+
+Remove any values greater than number from a series. Will error if this operation results in an empty series.
+
+## dropge(seriesSet, threshold numberSet|scalar) seriesSet
 
 Remove any values greater than or equal to number from a series. Will error if this operation results in an empty series.
 
-## drople(seriesSet, scalar) seriesSet
+## dropl(seriesSet, threshold numberSet|scalar) seriesSet
+
+Remove any values lower than number from a series. Will error if this operation results in an empty series.
+
+## drople(seriesSet, threshold numberSet|scalar) seriesSet
 
 Remove any values lower than or equal to number from a series. Will error if this operation results in an empty series.
 
@@ -362,21 +383,23 @@ Returns the Unix epoch in seconds of the expression start time (scalar).
 
 ## filter(seriesSet, numberSet) seriesSet
 
-Returns all results in series that are a subset of anything in number, or
-that have number as a subset. Useful with the limit and sort functions to
-return the top X results of a query.
+Returns all results in seriesSet that are a subset of numberSet and have a non-zero value. Useful with the limit and sort functions to return the top X results of a query.
 
 ## limit(numberSet, count scalar) numberSet
 
 Returns the first count (scalar) results of number.
 
-## lookup(table string, key string) numberSet 
+## lookup(table string, key string) numberSet
 
 Returns the first key from the given lookup table with matching tags.
 
 ## nv(numberSet, scalar) numberSet
 
 Change the NaN value during binary operations (when joining two queries) of unknown groups to the scalar. This is useful to prevent unknown group and other errors from bubbling up.
+
+## rename(seriesSet, string) seriesSet
+
+Accepts a series and a set of tags to rename in `Key1=NewK1,Key2=NewK2` format. All data points will have the tag keys renamed according to the spec provided, in order. This can be useful for combining results from seperate queries that have similar tagsets with different tag keys.
 
 ## sort(numberSet, (asc|desc) string) numberSet
 

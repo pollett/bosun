@@ -7,6 +7,8 @@ import (
 	"fmt"
 	"io/ioutil"
 	"log"
+	"net/http"
+	_ "net/http/pprof"
 	"net/url"
 	"os"
 	"path/filepath"
@@ -71,14 +73,20 @@ func main() {
 	} else if conf.Tags["host"] != "" {
 		slog.Fatalf("host not supported in custom tags, use Hostname instead")
 	}
+	if conf.PProf != "" {
+		go func() {
+			slog.Infof("Starting pprof at http://%s/debug/pprof/", conf.PProf)
+			slog.Fatal(http.ListenAndServe(conf.PProf, nil))
+		}()
+	}
 	collectors.AddTags = conf.Tags
 	util.FullHostname = conf.FullHost
 	util.Set()
 	if conf.Hostname != "" {
 		util.Hostname = conf.Hostname
-		if err := collect.SetHostname(conf.Hostname); err != nil {
-			slog.Fatal(err)
-		}
+	}
+	if err := collect.SetHostname(util.Hostname); err != nil {
+		slog.Fatal(err)
 	}
 	if conf.ColDir != "" {
 		collectors.InitPrograms(conf.ColDir)
@@ -89,10 +97,9 @@ func main() {
 			err = e
 		}
 	}
-	for _, h := range conf.HAProxy {
-		for _, i := range h.Instances {
-			collectors.HAProxy(h.User, h.Password, i.Tier, i.URL)
-		}
+	collectors.Init(conf)
+	for _, rmq := range conf.RabbitMQ {
+		check(collectors.RabbitMQ(rmq.URL))
 	}
 	for _, cfg := range conf.SNMP {
 		check(collectors.SNMP(cfg, conf.MIBS))
@@ -109,6 +116,9 @@ func main() {
 	for _, p := range conf.Process {
 		check(collectors.AddProcessConfig(p))
 	}
+	for _, p := range conf.ProcessDotNet {
+		check(collectors.AddProcessDotNetConfig(p))
+	}
 	for _, h := range conf.HTTPUnit {
 		if h.TOML != "" {
 			check(collectors.HTTPUnitTOML(h.TOML))
@@ -116,6 +126,12 @@ func main() {
 		if h.Hiera != "" {
 			check(collectors.HTTPUnitHiera(h.Hiera))
 		}
+	}
+	for _, r := range conf.ElasticIndexFilters {
+		check(collectors.AddElasticIndexFilter(r))
+	}
+	for _, r := range conf.Riak {
+		check(collectors.Riak(r.URL))
 	}
 	if err != nil {
 		slog.Fatal(err)
@@ -157,7 +173,7 @@ func main() {
 	if conf.BatchSize != 0 {
 		collect.BatchSize = conf.BatchSize
 	}
-	collect.Tags = opentsdb.TagSet{"os": runtime.GOOS}
+	collect.Tags = conf.Tags.Copy().Merge(opentsdb.TagSet{"os": runtime.GOOS})
 	if *flagPrint {
 		collect.Print = true
 	}
@@ -456,13 +472,13 @@ func toToml(fname string) {
 
 	f, err := os.Create(fname)
 	if err != nil {
-		log.Fatal(err)
+		slog.Fatal(err)
 	}
 	if err := toml.NewEncoder(f).Encode(&c); err != nil {
-		log.Fatal(err)
+		slog.Fatal(err)
 	}
 	if _, err := extra.WriteTo(f); err != nil {
-		log.Fatal(err)
+		slog.Fatal(err)
 	}
 	f.Close()
 }

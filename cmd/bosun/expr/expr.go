@@ -40,6 +40,9 @@ type State struct {
 	logstashQueries []elastic.SearchSource
 	logstashHosts   LogstashElasticHosts
 
+	// InfluxDB
+	InfluxHost string
+
 	History AlertStatusProvider
 }
 
@@ -73,7 +76,7 @@ func New(expr string, funcs ...map[string]parse.Func) (*Expr, error) {
 
 // Execute applies a parse expression to the specified OpenTSDB context, and
 // returns one result per group. T may be nil to ignore timings.
-func (e *Expr) Execute(c opentsdb.Context, g graphite.Context, l LogstashElasticHosts, cache *cache.Cache, T miniprofiler.Timer, now time.Time, autods int, unjoinedOk bool, search *search.Search, squelched func(tags opentsdb.TagSet) bool, history AlertStatusProvider) (r *Results, queries []opentsdb.Request, err error) {
+func (e *Expr) Execute(c opentsdb.Context, g graphite.Context, l LogstashElasticHosts, influxHost string, cache *cache.Cache, T miniprofiler.Timer, now time.Time, autods int, unjoinedOk bool, search *search.Search, squelched func(tags opentsdb.TagSet) bool, history AlertStatusProvider) (r *Results, queries []opentsdb.Request, err error) {
 	if squelched == nil {
 		squelched = func(tags opentsdb.TagSet) bool {
 			return false
@@ -85,6 +88,7 @@ func (e *Expr) Execute(c opentsdb.Context, g graphite.Context, l LogstashElastic
 		tsdbContext:     c,
 		graphiteContext: g,
 		logstashHosts:   l,
+		InfluxHost:      influxHost,
 		now:             now,
 		autods:          autods,
 		unjoinedOk:      unjoinedOk,
@@ -477,6 +481,8 @@ func operate(op string, a, b float64) (r float64) {
 		r = a - b
 	case "/":
 		r = a / b
+	case "%":
+		r = math.Mod(a, b)
 	case "==":
 		if a == b {
 			r = 1
@@ -578,7 +584,7 @@ func (e *State) walkFunc(node *parse.FuncNode, T miniprofiler.Timer) *Results {
 	var res *Results
 	T.Step("func: "+node.Name, func(T miniprofiler.Timer) {
 		var in []reflect.Value
-		for _, a := range node.Args {
+		for i, a := range node.Args {
 			var v interface{}
 			switch t := a.(type) {
 			case *parse.StringNode:
@@ -593,6 +599,9 @@ func (e *State) walkFunc(node *parse.FuncNode, T miniprofiler.Timer) *Results {
 				v = extractScalar(e.walkBinary(t, T))
 			default:
 				panic(fmt.Errorf("expr: unknown func arg type"))
+			}
+			if f, ok := v.(float64); ok && node.F.Args[i] == parse.TypeNumberSet {
+				v = fromScalar(f)
 			}
 			in = append(in, reflect.ValueOf(v))
 		}

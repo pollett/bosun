@@ -14,65 +14,82 @@ var bosunApp = angular.module('bosunApp', [
     'ui.ace',
 ]);
 bosunApp.config(['$routeProvider', '$locationProvider', '$httpProvider', function ($routeProvider, $locationProvider, $httpProvider) {
-    $locationProvider.html5Mode(true);
-    $routeProvider.when('/', {
-        title: 'Dashboard',
-        templateUrl: 'partials/dashboard.html',
-        controller: 'DashboardCtrl'
-    }).when('/items', {
-        title: 'Items',
-        templateUrl: 'partials/items.html',
-        controller: 'ItemsCtrl'
-    }).when('/expr', {
-        title: 'Expression',
-        templateUrl: 'partials/expr.html',
-        controller: 'ExprCtrl'
-    }).when('/graph', {
-        title: 'Graph',
-        templateUrl: 'partials/graph.html',
-        controller: 'GraphCtrl'
-    }).when('/host', {
-        title: 'Host View',
-        templateUrl: 'partials/host.html',
-        controller: 'HostCtrl',
-        reloadOnSearch: false
-    }).when('/silence', {
-        title: 'Silence',
-        templateUrl: 'partials/silence.html',
-        controller: 'SilenceCtrl'
-    }).when('/config', {
-        title: 'Configuration',
-        templateUrl: 'partials/config.html',
-        controller: 'ConfigCtrl',
-        reloadOnSearch: false
-    }).when('/action', {
-        title: 'Action',
-        templateUrl: 'partials/action.html',
-        controller: 'ActionCtrl'
-    }).when('/history', {
-        title: 'Alert History',
-        templateUrl: 'partials/history.html',
-        controller: 'HistoryCtrl'
-    }).when('/put', {
-        title: 'Data Entry',
-        templateUrl: 'partials/put.html',
-        controller: 'PutCtrl'
-    }).when('/incident', {
-        title: 'Incident',
-        templateUrl: 'partials/incident.html',
-        controller: 'IncidentCtrl'
-    }).otherwise({
-        redirectTo: '/'
-    });
-    $httpProvider.interceptors.push(function ($q) {
-        return {
-            'request': function (config) {
-                config.headers['X-Miniprofiler'] = 'true';
-                return config;
-            }
-        };
-    });
-}]);
+        $locationProvider.html5Mode(true);
+        $routeProvider.
+            when('/', {
+            title: 'Dashboard',
+            templateUrl: 'partials/dashboard.html',
+            controller: 'DashboardCtrl'
+        }).
+            when('/items', {
+            title: 'Items',
+            templateUrl: 'partials/items.html',
+            controller: 'ItemsCtrl'
+        }).
+            when('/expr', {
+            title: 'Expression',
+            templateUrl: 'partials/expr.html',
+            controller: 'ExprCtrl'
+        }).
+            when('/errors', {
+            title: 'Errors',
+            templateUrl: 'partials/errors.html',
+            controller: 'ErrorCtrl'
+        }).
+            when('/graph', {
+            title: 'Graph',
+            templateUrl: 'partials/graph.html',
+            controller: 'GraphCtrl'
+        }).
+            when('/host', {
+            title: 'Host View',
+            templateUrl: 'partials/host.html',
+            controller: 'HostCtrl',
+            reloadOnSearch: false
+        }).
+            when('/silence', {
+            title: 'Silence',
+            templateUrl: 'partials/silence.html',
+            controller: 'SilenceCtrl'
+        }).
+            when('/config', {
+            title: 'Configuration',
+            templateUrl: 'partials/config.html',
+            controller: 'ConfigCtrl',
+            reloadOnSearch: false
+        }).
+            when('/action', {
+            title: 'Action',
+            templateUrl: 'partials/action.html',
+            controller: 'ActionCtrl'
+        }).
+            when('/history', {
+            title: 'Alert History',
+            templateUrl: 'partials/history.html',
+            controller: 'HistoryCtrl'
+        }).
+            when('/put', {
+            title: 'Data Entry',
+            templateUrl: 'partials/put.html',
+            controller: 'PutCtrl'
+        }).
+            when('/incident', {
+            title: 'Incident',
+            templateUrl: 'partials/incident.html',
+            controller: 'IncidentCtrl'
+        }).
+            otherwise({
+            redirectTo: '/'
+        });
+        $httpProvider.interceptors.push(function ($q) {
+            return {
+                'request': function (config) {
+                    config.headers['X-Miniprofiler'] = 'true';
+                    return config;
+                }
+            };
+        });
+    }]);
 bosunApp.run(['$location', '$rootScope', function ($location, $rootScope) {
     $rootScope.$on('$routeChangeSuccess', function (event, current, previous) {
         $rootScope.title = current.$$route.title;
@@ -276,6 +293,12 @@ function readCookie(name) {
 function eraseCookie(name) {
     createCookie(name, "", -1);
 }
+function getUser() {
+    return readCookie('action-user');
+}
+function setUser(name) {
+    createCookie('action-user', name, 1000);
+}
 // from: http://stackoverflow.com/a/15267754/864236
 bosunApp.filter('reverse', function () {
     return function (items) {
@@ -286,371 +309,426 @@ bosunApp.filter('reverse', function () {
     };
 });
 bosunControllers.controller('ActionCtrl', ['$scope', '$http', '$location', '$route', function ($scope, $http, $location, $route) {
-    var search = $location.search();
-    $scope.user = readCookie("action-user");
-    $scope.type = search.type;
-    $scope.notify = true;
-    if (search.key) {
-        var keys = search.key;
-        if (!angular.isArray(search.key)) {
-            keys = [search.key];
-        }
-        $location.search('key', null);
-        $scope.setKey('action-keys', keys);
-    }
-    else {
-        $scope.keys = $scope.getKey('action-keys');
-    }
-    $scope.submit = function () {
-        var data = {
-            Type: $scope.type,
-            User: $scope.user,
-            Message: $scope.message,
-            Keys: $scope.keys,
-            Notify: $scope.notify
+        var search = $location.search();
+        $scope.user = readCookie("action-user");
+        $scope.type = search.type;
+        $scope.notify = true;
+        $scope.msgValid = true;
+        $scope.message = "";
+        $scope.validateMsg = function () {
+            $scope.msgValid = (!$scope.notify) || ($scope.message != "");
         };
-        createCookie("action-user", $scope.user, 1000);
-        $http.post('/api/action', data).success(function (data) {
-            $location.url('/');
-        }).error(function (error) {
-            alert(error);
-        });
-    };
-}]);
-bosunControllers.controller('ConfigCtrl', ['$scope', '$http', '$location', '$route', '$timeout', '$sce', function ($scope, $http, $location, $route, $timeout, $sce) {
-    var search = $location.search();
-    $scope.fromDate = search.fromDate || '';
-    $scope.fromTime = search.fromTime || '';
-    $scope.toDate = search.toDate || '';
-    $scope.toTime = search.toTime || '';
-    $scope.intervals = +search.intervals || 5;
-    $scope.duration = +search.duration || null;
-    $scope.config_text = 'Loading config...';
-    $scope.selected_alert = search.alert || '';
-    $scope.email = search.email || '';
-    $scope.template_group = search.template_group || '';
-    $scope.items = parseItems();
-    $scope.tab = search.tab || 'results';
-    $scope.aceTheme = 'chrome';
-    $scope.aceMode = 'bosun';
-    var expr = search.expr;
-    function buildAlertFromExpr() {
-        if (!expr)
-            return;
-        var newAlertName = "test";
-        var idx = 1;
-        while ($scope.items["alert"].indexOf(newAlertName) != -1 || $scope.items["template"].indexOf(newAlertName) != -1) {
-            newAlertName = "test" + idx;
-            idx++;
-        }
-        var text = '\n\ntemplate ' + newAlertName + ' {\n' + '	subject = {{.Last.Status}}: {{.Alert.Name}} on {{.Group.host}}\n' + '	body = `<p>Name: {{.Alert.Name}}\n' + '	<p>Tags:\n' + '	<table>\n' + '		{{range $k, $v := .Group}}\n' + '			<tr><td>{{$k}}</td><td>{{$v}}</td></tr>\n' + '		{{end}}\n' + '	</table>`\n' + '}\n\n';
-        text += 'alert ' + newAlertName + ' {\n' + '	template = ' + newAlertName + '\n' + '	crit = ' + atob(expr) + '\n' + '}\n';
-        $scope.config_text += text;
-        $scope.items = parseItems();
-        $timeout(function () {
-            //can't scroll editor until after control is updated. Defer it.
-            $scope.scrollTo("alert", newAlertName);
-        });
-    }
-    function parseItems() {
-        var configText = $scope.config_text;
-        var re = /^\s*(alert|template|notification|lookup|macro)\s+([\w\-\.\$]+)\s*\{/gm;
-        var match;
-        var items = {};
-        items["alert"] = [];
-        items["template"] = [];
-        items["lookup"] = [];
-        items["notification"] = [];
-        items["macro"] = [];
-        while (match = re.exec(configText)) {
-            var type = match[1];
-            var name = match[2];
-            var list = items[type];
-            if (!list) {
-                list = [];
-                items[type] = list;
+        if (search.key) {
+            var keys = search.key;
+            if (!angular.isArray(search.key)) {
+                keys = [search.key];
             }
-            list.push(name);
-        }
-        return items;
-    }
-    $http.get('/api/config?hash=' + (search.hash || '')).success(function (data) {
-        $scope.config_text = data;
-        $scope.items = parseItems();
-        buildAlertFromExpr();
-        if (!$scope.selected_alert && $scope.items["alert"].length) {
-            $scope.selected_alert = $scope.items["alert"][0];
-        }
-        $timeout(function () {
-            //can't scroll editor until after control is updated. Defer it.
-            $scope.scrollTo("alert", $scope.selected_alert);
-        });
-    }).error(function (data) {
-        $scope.validationResult = "Error fetching config: " + data;
-    });
-    $scope.reparse = function () {
-        $scope.items = parseItems();
-    };
-    var editor;
-    $scope.aceLoaded = function (_editor) {
-        editor = _editor;
-        $scope.editor = editor;
-        editor.getSession().setUseWrapMode(true);
-        editor.on("blur", function () {
-            $scope.$apply(function () {
-                $scope.items = parseItems();
-            });
-        });
-    };
-    var syntax = true;
-    $scope.aceToggleHighlight = function () {
-        if (syntax) {
-            editor.getSession().setMode();
-            syntax = false;
-            return;
-        }
-        syntax = true;
-        editor.getSession().setMode({
-            path: 'ace/mode/' + $scope.aceMode,
-            v: Date.now()
-        });
-    };
-    $scope.scrollTo = function (type, name) {
-        var searchRegex = new RegExp("^\\s*" + type + "\\s+" + name, "g");
-        editor.find(searchRegex, {
-            backwards: false,
-            wrap: true,
-            caseSensitive: false,
-            wholeWord: false,
-            regExp: true
-        });
-        if (type == "alert") {
-            $scope.selectAlert(name);
-        }
-    };
-    $scope.scrollToInterval = function (id) {
-        document.getElementById('time-' + id).scrollIntoView();
-        $scope.show($scope.sets[id]);
-    };
-    $scope.show = function (set) {
-        set.show = 'loading...';
-        $scope.animate();
-        var url = '/api/rule?' + 'alert=' + encodeURIComponent($scope.selected_alert) + '&from=' + encodeURIComponent(set.Time);
-        $http.post(url, $scope.config_text).success(function (data) {
-            procResults(data);
-            set.Results = data.Sets[0].Results;
-        }).error(function (error) {
-            $scope.error = error;
-        }).finally(function () {
-            $scope.stop();
-            delete (set.show);
-        });
-    };
-    $scope.setInterval = function () {
-        var from = moment.utc($scope.fromDate + ' ' + $scope.fromTime);
-        var to = moment.utc($scope.toDate + ' ' + $scope.toTime);
-        if (!from.isValid() || !to.isValid()) {
-            return;
-        }
-        var diff = from.diff(to);
-        if (!diff) {
-            return;
-        }
-        var intervals = +$scope.intervals;
-        if (intervals < 2) {
-            return;
-        }
-        diff /= 1000 * 60;
-        var d = Math.abs(Math.round(diff / intervals));
-        if (d < 1) {
-            d = 1;
-        }
-        $scope.duration = d;
-    };
-    $scope.selectAlert = function (alert) {
-        $scope.selected_alert = alert;
-        $location.search("alert", alert);
-        // Attempt to find `template = foo` in order to set up quick jump between template and alert
-        var searchRegex = new RegExp("^\\s*alert\\s+" + alert, "g");
-        var lines = $scope.config_text.split("\n");
-        $scope.quickJumpTarget = null;
-        for (var i = 0; i < lines.length; i++) {
-            if (searchRegex.test(lines[i])) {
-                for (var j = i + 1; j < lines.length; j++) {
-                    // Close bracket at start of line means end of alert.
-                    if (/^\s*\}/m.test(lines[j])) {
-                        return;
-                    }
-                    var found = /^\s*template\s*=\s*([\w\-\.\$]+)/m.exec(lines[j]);
-                    if (found) {
-                        $scope.quickJumpTarget = "template " + found[1];
-                    }
-                }
-            }
-        }
-    };
-    $scope.quickJump = function () {
-        var parts = $scope.quickJumpTarget.split(" ");
-        if (parts.length != 2) {
-            return;
-        }
-        $scope.scrollTo(parts[0], parts[1]);
-        if (parts[0] == "template" && $scope.selected_alert) {
-            $scope.quickJumpTarget = "alert " + $scope.selected_alert;
-        }
-    };
-    $scope.setTemplateGroup = function (group) {
-        var match = group.match(/{(.*)}/);
-        if (match) {
-            $scope.template_group = match[1];
-        }
-    };
-    var line_re = /test:(\d+)/;
-    $scope.validate = function () {
-        $http.post('/api/config_test', $scope.config_text).success(function (data) {
-            if (data == "") {
-                $scope.validationResult = "Valid";
-                $timeout(function () {
-                    $scope.validationResult = "";
-                }, 2000);
-            }
-            else {
-                $scope.validationResult = data;
-                var m = data.match(line_re);
-                if (angular.isArray(m) && (m.length > 1)) {
-                    editor.gotoLine(m[1]);
-                }
-            }
-        }).error(function (error) {
-            $scope.validationResult = 'Error validating: ' + error;
-        });
-    };
-    $scope.test = function () {
-        $scope.error = '';
-        $scope.running = true;
-        $scope.warning = [];
-        $location.search('fromDate', $scope.fromDate || null);
-        $location.search('fromTime', $scope.fromTime || null);
-        $location.search('toDate', $scope.toDate || null);
-        $location.search('toTime', $scope.toTime || null);
-        $location.search('intervals', String($scope.intervals) || null);
-        $location.search('duration', String($scope.duration) || null);
-        $location.search('email', $scope.email || null);
-        $location.search('template_group', $scope.template_group || null);
-        $scope.animate();
-        var from = moment.utc($scope.fromDate + ' ' + $scope.fromTime);
-        var to = moment.utc($scope.toDate + ' ' + $scope.toTime);
-        if (!from.isValid()) {
-            from = to;
-        }
-        if (!to.isValid()) {
-            to = from;
-        }
-        if (!from.isValid() && !to.isValid()) {
-            from = to = moment.utc();
-        }
-        var diff = from.diff(to);
-        var intervals;
-        if (diff == 0) {
-            intervals = 1;
-        }
-        else if (Math.abs(diff) < 60 * 1000) {
-            intervals = 2;
+            $location.search('key', null);
+            $scope.setKey('action-keys', keys);
         }
         else {
-            intervals = +$scope.intervals;
+            $scope.keys = $scope.getKey('action-keys');
         }
-        var url = '/api/rule?' + 'alert=' + encodeURIComponent($scope.selected_alert) + '&from=' + encodeURIComponent(from.format()) + '&to=' + encodeURIComponent(to.format()) + '&intervals=' + encodeURIComponent(intervals) + '&email=' + encodeURIComponent($scope.email) + '&template_group=' + encodeURIComponent($scope.template_group);
-        $http.post(url, $scope.config_text).success(function (data) {
-            $scope.sets = data.Sets;
-            $scope.alert_history = data.AlertHistory;
-            if (data.Hash) {
-                $location.search('hash', data.Hash);
+        $scope.submit = function () {
+            $scope.validateMsg();
+            if (!$scope.msgValid || ($scope.user == "")) {
+                return;
             }
-            procResults(data);
-        }).error(function (error) {
-            $scope.error = error;
-        }).finally(function () {
-            $scope.running = false;
-            $scope.stop();
-        });
-    };
-    $scope.zws = function (v) {
-        return v.replace(/([,{}()])/g, '$1\u200b');
-    };
-    $scope.loadTimelinePanel = function (entry, v) {
-        if (v.doneLoading && !v.error) {
-            return;
+            var data = {
+                Type: $scope.type,
+                User: $scope.user,
+                Message: $scope.message,
+                Keys: $scope.keys,
+                Notify: $scope.notify
+            };
+            createCookie("action-user", $scope.user, 1000);
+            $http.post('/api/action', data)
+                .success(function (data) {
+                $location.url('/');
+            })
+                .error(function (error) {
+                alert(error);
+            });
+        };
+    }]);
+bosunControllers.controller('ConfigCtrl', ['$scope', '$http', '$location', '$route', '$timeout', '$sce', function ($scope, $http, $location, $route, $timeout, $sce) {
+        var search = $location.search();
+        $scope.fromDate = search.fromDate || '';
+        $scope.fromTime = search.fromTime || '';
+        $scope.toDate = search.toDate || '';
+        $scope.toTime = search.toTime || '';
+        $scope.intervals = +search.intervals || 5;
+        $scope.duration = +search.duration || null;
+        $scope.config_text = 'Loading config...';
+        $scope.selected_alert = search.alert || '';
+        $scope.email = search.email || '';
+        $scope.template_group = search.template_group || '';
+        $scope.items = parseItems();
+        $scope.tab = search.tab || 'results';
+        $scope.aceTheme = 'chrome';
+        $scope.aceMode = 'bosun';
+        var expr = search.expr;
+        function buildAlertFromExpr() {
+            if (!expr)
+                return;
+            var newAlertName = "test";
+            var idx = 1;
+            //find a unique alert name
+            while ($scope.items["alert"].indexOf(newAlertName) != -1 || $scope.items["template"].indexOf(newAlertName) != -1) {
+                newAlertName = "test" + idx;
+                idx++;
+            }
+            var text = '\n\ntemplate ' + newAlertName + ' {\n' +
+                '	subject = {{.Last.Status}}: {{.Alert.Name}} on {{.Group.host}}\n' +
+                '	body = `<p>Name: {{.Alert.Name}}\n' +
+                '	<p>Tags:\n' +
+                '	<table>\n' +
+                '		{{range $k, $v := .Group}}\n' +
+                '			<tr><td>{{$k}}</td><td>{{$v}}</td></tr>\n' +
+                '		{{end}}\n' +
+                '	</table>`\n' +
+                '}\n\n';
+            var expression = atob(expr);
+            var lines = expression.split("\n").map(function (l) { return l.trim(); });
+            lines[lines.length - 1] = "crit = " + lines[lines.length - 1];
+            expression = lines.join("\n    ");
+            text += 'alert ' + newAlertName + ' {\n' +
+                '	template = ' + newAlertName + '\n' +
+                '	' + expression + '\n' +
+                '}\n';
+            $scope.config_text += text;
+            $scope.items = parseItems();
+            $timeout(function () {
+                //can't scroll editor until after control is updated. Defer it.
+                $scope.scrollTo("alert", newAlertName);
+            });
         }
-        v.error = null;
-        v.doneLoading = false;
-        var ak = entry.key;
-        var openBrack = ak.indexOf("{");
-        var closeBrack = ak.indexOf("}");
-        var alertName = ak.substr(0, openBrack);
-        var template = ak.substring(openBrack + 1, closeBrack);
-        var url = '/api/rule?' + 'alert=' + encodeURIComponent(alertName) + '&from=' + encodeURIComponent(moment.utc(v.Time).format()) + '&template_group=' + encodeURIComponent(template);
-        $http.post(url, $scope.config_text).success(function (data) {
-            v.subject = data.Subject;
-            v.body = $sce.trustAsHtml(data.Body);
-        }).error(function (error) {
-            v.error = error;
-        }).finally(function () {
-            v.doneLoading = true;
+        function parseItems() {
+            var configText = $scope.config_text;
+            var re = /^\s*(alert|template|notification|lookup|macro)\s+([\w\-\.\$]+)\s*\{/gm;
+            var match;
+            var items = {};
+            items["alert"] = [];
+            items["template"] = [];
+            items["lookup"] = [];
+            items["notification"] = [];
+            items["macro"] = [];
+            while (match = re.exec(configText)) {
+                var type = match[1];
+                var name = match[2];
+                var list = items[type];
+                if (!list) {
+                    list = [];
+                    items[type] = list;
+                }
+                list.push(name);
+            }
+            return items;
+        }
+        $http.get('/api/config?hash=' + (search.hash || ''))
+            .success(function (data) {
+            $scope.config_text = data;
+            $scope.items = parseItems();
+            buildAlertFromExpr();
+            if (!$scope.selected_alert && $scope.items["alert"].length) {
+                $scope.selected_alert = $scope.items["alert"][0];
+            }
+            $timeout(function () {
+                //can't scroll editor until after control is updated. Defer it.
+                $scope.scrollTo("alert", $scope.selected_alert);
+            });
+        })
+            .error(function (data) {
+            $scope.validationResult = "Error fetching config: " + data;
         });
-    };
-    function procResults(data) {
-        $scope.subject = data.Subject;
-        $scope.body = $sce.trustAsHtml(data.Body);
-        $scope.data = JSON.stringify(data.Data, null, '  ');
-        $scope.error = data.Errors;
-        $scope.warning = data.Warnings;
-    }
-    return $scope;
-}]);
-bosunControllers.controller('DashboardCtrl', ['$scope', '$http', '$location', function ($scope, $http, $location) {
-    var search = $location.search();
-    $scope.loading = 'Loading';
-    $scope.error = '';
-    $scope.filter = search.filter;
-    if (!$scope.filter) {
-        $scope.filter = readCookie("filter");
-    }
-    $location.search('filter', $scope.filter || null);
-    reload();
-    function reload() {
-        $scope.refresh($scope.filter).then(function () {
-            $scope.loading = '';
+        $scope.reparse = function () {
+            $scope.items = parseItems();
+        };
+        var editor;
+        $scope.aceLoaded = function (_editor) {
+            editor = _editor;
+            $scope.editor = editor;
+            editor.getSession().setUseWrapMode(true);
+            editor.on("blur", function () {
+                $scope.$apply(function () {
+                    $scope.items = parseItems();
+                });
+            });
+        };
+        var syntax = true;
+        $scope.aceToggleHighlight = function () {
+            if (syntax) {
+                editor.getSession().setMode();
+                syntax = false;
+                return;
+            }
+            syntax = true;
+            editor.getSession().setMode({
+                path: 'ace/mode/' + $scope.aceMode,
+                v: Date.now()
+            });
+        };
+        $scope.scrollTo = function (type, name) {
+            var searchRegex = new RegExp("^\\s*" + type + "\\s+" + name, "g");
+            editor.find(searchRegex, {
+                backwards: false,
+                wrap: true,
+                caseSensitive: false,
+                wholeWord: false,
+                regExp: true
+            });
+            if (type == "alert") {
+                $scope.selectAlert(name);
+            }
+        };
+        $scope.scrollToInterval = function (id) {
+            document.getElementById('time-' + id).scrollIntoView();
+            $scope.show($scope.sets[id]);
+        };
+        $scope.show = function (set) {
+            set.show = 'loading...';
+            $scope.animate();
+            var url = '/api/rule?' +
+                'alert=' + encodeURIComponent($scope.selected_alert) +
+                '&from=' + encodeURIComponent(set.Time);
+            $http.post(url, $scope.config_text)
+                .success(function (data) {
+                procResults(data);
+                set.Results = data.Sets[0].Results;
+            })
+                .error(function (error) {
+                $scope.error = error;
+            })
+                .finally(function () {
+                $scope.stop();
+                delete (set.show);
+            });
+        };
+        $scope.setInterval = function () {
+            var from = moment.utc($scope.fromDate + ' ' + $scope.fromTime);
+            var to = moment.utc($scope.toDate + ' ' + $scope.toTime);
+            if (!from.isValid() || !to.isValid()) {
+                return;
+            }
+            var diff = from.diff(to);
+            if (!diff) {
+                return;
+            }
+            var intervals = +$scope.intervals;
+            if (intervals < 2) {
+                return;
+            }
+            diff /= 1000 * 60;
+            var d = Math.abs(Math.round(diff / intervals));
+            if (d < 1) {
+                d = 1;
+            }
+            $scope.duration = d;
+        };
+        $scope.setDuration = function () {
+            var from = moment.utc($scope.fromDate + ' ' + $scope.fromTime);
+            var to = moment.utc($scope.toDate + ' ' + $scope.toTime);
+            if (!from.isValid() || !to.isValid()) {
+                return;
+            }
+            var diff = from.diff(to);
+            if (!diff) {
+                return;
+            }
+            var duration = +$scope.duration;
+            if (duration < 1) {
+                return;
+            }
+            $scope.intervals = Math.abs(Math.round(diff / duration / 1000 / 60));
+        };
+        $scope.selectAlert = function (alert) {
+            $scope.selected_alert = alert;
+            $location.search("alert", alert);
+            // Attempt to find `template = foo` in order to set up quick jump between template and alert
+            var searchRegex = new RegExp("^\\s*alert\\s+" + alert, "g");
+            var lines = $scope.config_text.split("\n");
+            $scope.quickJumpTarget = null;
+            for (var i = 0; i < lines.length; i++) {
+                if (searchRegex.test(lines[i])) {
+                    for (var j = i + 1; j < lines.length; j++) {
+                        // Close bracket at start of line means end of alert.
+                        if (/^\s*\}/m.test(lines[j])) {
+                            return;
+                        }
+                        var found = /^\s*template\s*=\s*([\w\-\.\$]+)/m.exec(lines[j]);
+                        if (found) {
+                            $scope.quickJumpTarget = "template " + found[1];
+                        }
+                    }
+                }
+            }
+        };
+        $scope.quickJump = function () {
+            var parts = $scope.quickJumpTarget.split(" ");
+            if (parts.length != 2) {
+                return;
+            }
+            $scope.scrollTo(parts[0], parts[1]);
+            if (parts[0] == "template" && $scope.selected_alert) {
+                $scope.quickJumpTarget = "alert " + $scope.selected_alert;
+            }
+        };
+        $scope.setTemplateGroup = function (group) {
+            var match = group.match(/{(.*)}/);
+            if (match) {
+                $scope.template_group = match[1];
+            }
+        };
+        var line_re = /test:(\d+)/;
+        $scope.validate = function () {
+            $http.post('/api/config_test', $scope.config_text)
+                .success(function (data) {
+                if (data == "") {
+                    $scope.validationResult = "Valid";
+                    $timeout(function () {
+                        $scope.validationResult = "";
+                    }, 2000);
+                }
+                else {
+                    $scope.validationResult = data;
+                    var m = data.match(line_re);
+                    if (angular.isArray(m) && (m.length > 1)) {
+                        editor.gotoLine(m[1]);
+                    }
+                }
+            })
+                .error(function (error) {
+                $scope.validationResult = 'Error validating: ' + error;
+            });
+        };
+        $scope.test = function () {
             $scope.error = '';
-        }, function (err) {
-            $scope.loading = '';
-            $scope.error = 'Unable to fetch alerts: ' + err;
-        });
-    }
-    $scope.keydown = function ($event) {
-        if ($event.keyCode == 13) {
-            createCookie("filter", $scope.filter || "", 1000);
-            $location.search('filter', $scope.filter || null);
+            $scope.running = true;
+            $scope.warning = [];
+            $location.search('fromDate', $scope.fromDate || null);
+            $location.search('fromTime', $scope.fromTime || null);
+            $location.search('toDate', $scope.toDate || null);
+            $location.search('toTime', $scope.toTime || null);
+            $location.search('intervals', String($scope.intervals) || null);
+            $location.search('duration', String($scope.duration) || null);
+            $location.search('email', $scope.email || null);
+            $location.search('template_group', $scope.template_group || null);
+            $scope.animate();
+            var from = moment.utc($scope.fromDate + ' ' + $scope.fromTime);
+            var to = moment.utc($scope.toDate + ' ' + $scope.toTime);
+            if (!from.isValid()) {
+                from = to;
+            }
+            if (!to.isValid()) {
+                to = from;
+            }
+            if (!from.isValid() && !to.isValid()) {
+                from = to = moment.utc();
+            }
+            var diff = from.diff(to);
+            var intervals;
+            if (diff == 0) {
+                intervals = 1;
+            }
+            else if (Math.abs(diff) < 60 * 1000) {
+                intervals = 2;
+            }
+            else {
+                intervals = +$scope.intervals;
+            }
+            var url = '/api/rule?' +
+                'alert=' + encodeURIComponent($scope.selected_alert) +
+                '&from=' + encodeURIComponent(from.format()) +
+                '&to=' + encodeURIComponent(to.format()) +
+                '&intervals=' + encodeURIComponent(intervals) +
+                '&email=' + encodeURIComponent($scope.email) +
+                '&template_group=' + encodeURIComponent($scope.template_group);
+            $http.post(url, $scope.config_text)
+                .success(function (data) {
+                $scope.sets = data.Sets;
+                $scope.alert_history = data.AlertHistory;
+                if (data.Hash) {
+                    $location.search('hash', data.Hash);
+                }
+                procResults(data);
+            })
+                .error(function (error) {
+                $scope.error = error;
+            })
+                .finally(function () {
+                $scope.running = false;
+                $scope.stop();
+            });
+        };
+        $scope.zws = function (v) {
+            return v.replace(/([,{}()])/g, '$1\u200b');
+        };
+        $scope.loadTimelinePanel = function (entry, v) {
+            if (v.doneLoading && !v.error) {
+                return;
+            }
+            v.error = null;
+            v.doneLoading = false;
+            var ak = entry.key;
+            var openBrack = ak.indexOf("{");
+            var closeBrack = ak.indexOf("}");
+            var alertName = ak.substr(0, openBrack);
+            var template = ak.substring(openBrack + 1, closeBrack);
+            var url = '/api/rule?' +
+                'alert=' + encodeURIComponent(alertName) +
+                '&from=' + encodeURIComponent(moment.utc(v.Time).format()) +
+                '&template_group=' + encodeURIComponent(template);
+            $http.post(url, $scope.config_text)
+                .success(function (data) {
+                v.subject = data.Subject;
+                v.body = $sce.trustAsHtml(data.Body);
+            })
+                .error(function (error) {
+                v.error = error;
+            })
+                .finally(function () {
+                v.doneLoading = true;
+            });
+        };
+        function procResults(data) {
+            $scope.subject = data.Subject;
+            $scope.body = $sce.trustAsHtml(data.Body);
+            $scope.data = JSON.stringify(data.Data, null, '  ');
+            $scope.error = data.Errors;
+            $scope.warning = data.Warnings;
         }
-    };
-    var check_clicked = false;
-    $scope.check = function () {
-        if (check_clicked) {
-            return;
-        }
-        check_clicked = true;
-        $scope.loading = 'Running Rule Check...';
+        $scope.downloadConfig = function () {
+            var blob = new Blob([$scope.config_text], { type: "text/plain;charset=utf-8" });
+            saveAs(blob, "bosun.conf");
+        };
+        return $scope;
+    }]);
+bosunControllers.controller('DashboardCtrl', ['$scope', '$http', '$location', function ($scope, $http, $location) {
+        var search = $location.search();
+        $scope.loading = 'Loading';
         $scope.error = '';
-        $scope.animate();
-        $http.get('/api/run').success(reload).error(function (err) {
-            $scope.error = err;
-        }).finally(function () {
-            $scope.loading = '';
-            check_clicked = false;
-            $scope.stop(); // stop animation
-        });
-    };
-}]);
+        $scope.filter = search.filter;
+        if (!$scope.filter) {
+            $scope.filter = readCookie("filter");
+        }
+        $location.search('filter', $scope.filter || null);
+        reload();
+        function reload() {
+            $scope.refresh($scope.filter).then(function () {
+                $scope.loading = '';
+                $scope.error = '';
+            }, function (err) {
+                $scope.loading = '';
+                $scope.error = 'Unable to fetch alerts: ' + err;
+            });
+        }
+        $scope.keydown = function ($event) {
+            if ($event.keyCode == 13) {
+                createCookie("filter", $scope.filter || "", 1000);
+                $location.search('filter', $scope.filter || null);
+            }
+        };
+    }]);
 bosunApp.directive('tsResults', function () {
     return {
         templateUrl: '/partials/results.html',
@@ -810,16 +888,16 @@ bosunApp.directive('tsresizable', function () {
     };
 });
 bosunApp.directive('tsTableSort', ['$timeout', function ($timeout) {
-    return {
-        link: function (scope, elem, attrs) {
-            $timeout(function () {
-                $(elem).tablesorter({
-                    sortList: scope.$eval(attrs.tsTableSort)
+        return {
+            link: function (scope, elem, attrs) {
+                $timeout(function () {
+                    $(elem).tablesorter({
+                        sortList: scope.$eval(attrs.tsTableSort)
+                    });
                 });
-            });
-        }
-    };
-}]);
+            }
+        };
+    }]);
 bosunApp.directive('tsTimeLine', function () {
     var tsdbFormat = d3.time.format.utc("%Y/%m/%d-%X");
     function parseDate(s) {
@@ -853,12 +931,8 @@ bosunApp.directive('tsTimeLine', function () {
                     return a.key.localeCompare(b.key);
                 });
                 scope.entries = entries;
-                var values = entries.map(function (v) {
-                    return v.value;
-                });
-                var keys = entries.map(function (v) {
-                    return v.key;
-                });
+                var values = entries.map(function (v) { return v.value; });
+                var keys = entries.map(function (v) { return v.key; });
                 var barheight = 500 / values.length;
                 barheight = Math.min(barheight, 45);
                 barheight = Math.max(barheight, 15);
@@ -867,37 +941,53 @@ bosunApp.directive('tsTimeLine', function () {
                 var svgWidth = elem.width();
                 var width = svgWidth - margin.left - margin.right;
                 var xScale = d3.time.scale.utc().range([0, width]);
-                var xAxis = d3.svg.axis().scale(xScale).orient('bottom');
+                var xAxis = d3.svg.axis()
+                    .scale(xScale)
+                    .orient('bottom');
                 elem.empty();
-                var svg = d3.select(elem[0]).append('svg').attr('width', svgWidth).attr('height', svgHeight).append('g').attr('transform', 'translate(' + margin.left + ',' + margin.top + ')');
-                svg.append('g').attr('class', 'x axis tl-axis').attr('transform', 'translate(0,' + height + ')');
+                var svg = d3.select(elem[0])
+                    .append('svg')
+                    .attr('width', svgWidth)
+                    .attr('height', svgHeight)
+                    .append('g')
+                    .attr('transform', 'translate(' + margin.left + ',' + margin.top + ')');
+                svg.append('g')
+                    .attr('class', 'x axis tl-axis')
+                    .attr('transform', 'translate(0,' + height + ')');
                 xScale.domain([
-                    d3.min(values, function (d) {
-                        return d3.min(d.History, function (c) {
-                            return parseDate(c.Time);
-                        });
-                    }),
-                    d3.max(values, function (d) {
-                        return d3.max(d.History, function (c) {
-                            return parseDate(c.EndTime);
-                        });
-                    }),
+                    d3.min(values, function (d) { return d3.min(d.History, function (c) { return parseDate(c.Time); }); }),
+                    d3.max(values, function (d) { return d3.max(d.History, function (c) { return parseDate(c.EndTime); }); }),
                 ]);
-                var legend = d3.select(elem[0]).append('div').attr('class', 'tl-legend');
-                var time_legend = legend.append('div').text(values[0].History[0].Time);
-                var alert_legend = legend.append('div').text(keys[0]);
-                svg.select('.x.axis').transition().call(xAxis);
+                var legend = d3.select(elem[0])
+                    .append('div')
+                    .attr('class', 'tl-legend');
+                var time_legend = legend
+                    .append('div')
+                    .text(values[0].History[0].Time);
+                var alert_legend = legend
+                    .append('div')
+                    .text(keys[0]);
+                svg.select('.x.axis')
+                    .transition()
+                    .call(xAxis);
                 var chart = svg.append('g');
                 angular.forEach(entries, function (entry, i) {
-                    chart.selectAll('.bars').data(entry.value.History).enter().append('rect').attr('class', function (d) {
-                        return 'tl-' + d.Status;
-                    }).attr('x', function (d) {
-                        return xScale(parseDate(d.Time));
-                    }).attr('y', i * barheight).attr('height', barheight).attr('width', function (d) {
+                    chart.selectAll('.bars')
+                        .data(entry.value.History)
+                        .enter()
+                        .append('rect')
+                        .attr('class', function (d) { return 'tl-' + d.Status; })
+                        .attr('x', function (d) { return xScale(parseDate(d.Time)); })
+                        .attr('y', i * barheight)
+                        .attr('height', barheight)
+                        .attr('width', function (d) {
                         return xScale(parseDate(d.EndTime)) - xScale(parseDate(d.Time));
-                    }).on('mousemove.x', mousemove_x).on('mousemove.y', function (d) {
+                    })
+                        .on('mousemove.x', mousemove_x)
+                        .on('mousemove.y', function (d) {
                         alert_legend.text(entry.key);
-                    }).on('click', function (d, j) {
+                    })
+                        .on('click', function (d, j) {
                         var id = 'panel' + i + '-' + j;
                         scope.shown['group' + i] = true;
                         scope.shown[id] = true;
@@ -915,17 +1005,29 @@ bosunApp.directive('tsTimeLine', function () {
                         });
                     });
                 });
-                chart.selectAll('.labels').data(keys).enter().append('text').attr('text-anchor', 'end').attr('x', 0).attr('dx', '-.5em').attr('dy', '.25em').attr('y', function (d, i) {
-                    return (i + .5) * barheight;
-                }).text(function (d) {
-                    return d;
-                });
-                chart.selectAll('.sep').data(values).enter().append('rect').attr('y', function (d, i) {
-                    return (i + 1) * barheight;
-                }).attr('height', 1).attr('x', 0).attr('width', width).on('mousemove.x', mousemove_x);
+                chart.selectAll('.labels')
+                    .data(keys)
+                    .enter()
+                    .append('text')
+                    .attr('text-anchor', 'end')
+                    .attr('x', 0)
+                    .attr('dx', '-.5em')
+                    .attr('dy', '.25em')
+                    .attr('y', function (d, i) { return (i + .5) * barheight; })
+                    .text(function (d) { return d; });
+                chart.selectAll('.sep')
+                    .data(values)
+                    .enter()
+                    .append('rect')
+                    .attr('y', function (d, i) { return (i + 1) * barheight; })
+                    .attr('height', 1)
+                    .attr('x', 0)
+                    .attr('width', width)
+                    .on('mousemove.x', mousemove_x);
                 function mousemove_x() {
                     var x = xScale.invert(d3.mouse(this)[0]);
-                    time_legend.text(tsdbFormat(x));
+                    time_legend
+                        .text(tsdbFormat(x));
                 }
             }
             ;
@@ -975,373 +1077,549 @@ bosunApp.filter('bits', function () {
         return nfmt(s, 1024, 'b', { round: true });
     };
 });
+bosunApp.directive('elastic', [
+    '$timeout',
+    function ($timeout) {
+        return {
+            restrict: 'A',
+            link: function ($scope, element) {
+                $scope.initialHeight = $scope.initialHeight || element[0].style.height;
+                var resize = function () {
+                    element[0].style.height = $scope.initialHeight;
+                    element[0].style.height = "" + element[0].scrollHeight + "px";
+                };
+                element.on("input change", resize);
+                $timeout(resize, 0);
+            }
+        };
+    }
+]);
 bosunApp.directive('tsGraph', ['$window', 'nfmtFilter', function ($window, fmtfilter) {
-    var margin = {
-        top: 10,
-        right: 10,
-        bottom: 30,
-        left: 80
-    };
-    return {
-        scope: {
-            data: '=',
-            height: '=',
-            generator: '=',
-            brushStart: '=bstart',
-            brushEnd: '=bend',
-            enableBrush: '@',
-            max: '=',
-            min: '='
-        },
-        link: function (scope, elem, attrs) {
-            var svgHeight = +scope.height || 150;
-            var height = svgHeight - margin.top - margin.bottom;
-            var svgWidth;
-            var width;
-            var yScale = d3.scale.linear().range([height, 0]);
-            var xScale = d3.time.scale.utc();
-            var xAxis = d3.svg.axis().orient('bottom');
-            var yAxis = d3.svg.axis().scale(yScale).orient('left').ticks(Math.min(10, height / 20)).tickFormat(fmtfilter);
-            var line;
-            switch (scope.generator) {
-                case 'area':
-                    line = d3.svg.area();
-                    break;
-                default:
-                    line = d3.svg.line();
-            }
-            var brush = d3.svg.brush().x(xScale).on('brush', brushed);
-            line.y(function (d) {
-                return yScale(d[1]);
-            });
-            line.x(function (d) {
-                return xScale(d[0] * 1000);
-            });
-            var top = d3.select(elem[0]).append('svg').attr('height', svgHeight).attr('width', '100%');
-            var svg = top.append('g').attr('transform', 'translate(' + margin.left + ',' + margin.top + ')');
-            var defs = svg.append('defs').append('clipPath').attr('id', 'clip').append('rect').attr('height', height);
-            var chart = svg.append('g').attr('pointer-events', 'all').attr('clip-path', 'url(#clip)');
-            svg.append('g').attr('class', 'x axis').attr('transform', 'translate(0,' + height + ')');
-            svg.append('g').attr('class', 'y axis');
-            var paths = chart.append('g');
-            chart.append('g').attr('class', 'x brush');
-            top.append('rect').style('opacity', 0).attr('x', 0).attr('y', 0).attr('height', height).attr('width', margin.left).style('cursor', 'pointer').on('click', yaxisToggle);
-            var legendTop = d3.select(elem[0]).append('div');
-            var xloc = legendTop.append('div');
-            xloc.style('float', 'left');
-            var brushText = legendTop.append('div');
-            brushText.style('float', 'right');
-            var legend = d3.select(elem[0]).append('div');
-            legend.style('clear', 'both');
-            var color = d3.scale.ordinal().range([
-                '#e41a1c',
-                '#377eb8',
-                '#4daf4a',
-                '#984ea3',
-                '#ff7f00',
-                '#a65628',
-                '#f781bf',
-                '#999999',
-            ]);
-            var mousex = 0;
-            var mousey = 0;
-            var oldx = 0;
-            var hover = svg.append('g').attr('class', 'hover').style('pointer-events', 'none').style('display', 'none');
-            var hoverPoint = hover.append('svg:circle').attr('r', 5);
-            var hoverRect = hover.append('svg:rect').attr('fill', 'white');
-            var hoverText = hover.append('svg:text').style('font-size', '12px');
-            var focus = svg.append('g').attr('class', 'focus').style('pointer-events', 'none');
-            focus.append('line');
-            function mousemove() {
-                var pt = d3.mouse(this);
-                mousex = pt[0];
-                mousey = pt[1];
-                if (scope.data) {
-                    drawLegend();
+        var margin = {
+            top: 10,
+            right: 10,
+            bottom: 30,
+            left: 80
+        };
+        return {
+            scope: {
+                data: '=',
+                height: '=',
+                generator: '=',
+                brushStart: '=bstart',
+                brushEnd: '=bend',
+                enableBrush: '@',
+                max: '=',
+                min: '=',
+                normalize: '='
+            },
+            link: function (scope, elem, attrs) {
+                var valueIdx = 1;
+                if (scope.normalize) {
+                    valueIdx = 2;
                 }
-            }
-            var yaxisZero = false;
-            function yaxisToggle() {
-                yaxisZero = !yaxisZero;
-                draw();
-            }
-            var drawLegend = _.throttle(function () {
-                var names = legend.selectAll('.series').data(scope.data, function (d) {
-                    return d.Name;
-                });
-                names.enter().append('div').attr('class', 'series');
-                names.exit().remove();
-                var xi = xScale.invert(mousex);
-                xloc.text('Time: ' + fmtTime(xi));
-                var t = xi.getTime() / 1000;
-                var minDist = width + height;
-                var minName, minColor;
-                var minX, minY;
-                names.each(function (d) {
-                    var idx = bisect(d.Data, t);
-                    if (idx >= d.Data.length) {
-                        idx = d.Data.length - 1;
-                    }
-                    var e = d3.select(this);
-                    var pt = d.Data[idx];
-                    if (pt) {
-                        e.attr('title', pt[1]);
-                        e.text(d.Name + ': ' + fmtfilter(pt[1]));
-                        var ptx = xScale(pt[0] * 1000);
-                        var pty = yScale(pt[1]);
-                        var ptd = Math.sqrt(Math.pow(ptx - mousex, 2) + Math.pow(pty - mousey, 2));
-                        if (ptd < minDist) {
-                            minDist = ptd;
-                            minX = ptx;
-                            minY = pty;
-                            minName = d.Name + ': ' + pt[1];
-                            minColor = color(d.Name);
-                        }
-                    }
-                }).style('color', function (d) {
-                    return color(d.Name);
-                });
-                hover.attr('transform', 'translate(' + minX + ',' + minY + ')');
-                hoverPoint.style('fill', minColor);
-                hoverText.text(minName).style('fill', minColor);
-                var isRight = minX > width / 2;
-                var isBottom = minY > height / 2;
-                hoverText.attr('x', isRight ? -5 : 5).attr('y', isBottom ? -8 : 15).attr('text-anchor', isRight ? 'end' : 'start');
-                var node = hoverText.node();
-                var bb = node.getBBox();
-                hoverRect.attr('x', bb.x - 1).attr('y', bb.y - 1).attr('height', bb.height + 2).attr('width', bb.width + 2);
-                var x = mousex;
-                if (x > width) {
-                    x = 0;
-                }
-                focus.select('line').attr('x1', x).attr('x2', x).attr('y1', 0).attr('y2', height);
-                if (extentStart) {
-                    var s = extentStart;
-                    if (extentEnd != extentStart) {
-                        s += ' - ' + extentEnd;
-                        s += ' (' + extentDiff + ')';
-                    }
-                    brushText.text(s);
-                }
-            }, 50);
-            scope.$watch('data', update);
-            var w = angular.element($window);
-            scope.$watch(function () {
-                return w.width();
-            }, resize, true);
-            w.bind('resize', function () {
-                scope.$apply();
-            });
-            function resize() {
-                svgWidth = elem.width();
-                if (svgWidth <= 0) {
-                    return;
-                }
-                width = svgWidth - margin.left - margin.right;
-                xScale.range([0, width]);
-                xAxis.scale(xScale);
-                if (!mousex) {
-                    mousex = width + 1;
-                }
-                svg.attr('width', svgWidth);
-                defs.attr('width', width);
-                xAxis.ticks(width / 60);
-                draw();
-            }
-            var oldx = 0;
-            var bisect = d3.bisector(function (d) {
-                return d[0];
-            }).left;
-            function update(v) {
-                if (!angular.isArray(v) || v.length == 0) {
-                    return;
-                }
-                resize();
-            }
-            function draw() {
-                if (!scope.data) {
-                    return;
-                }
-                var xdomain = [
-                    d3.min(scope.data, function (d) {
-                        return d3.min(d.Data, function (c) {
-                            return c[0];
-                        });
-                    }) * 1000,
-                    d3.max(scope.data, function (d) {
-                        return d3.max(d.Data, function (c) {
-                            return c[0];
-                        });
-                    }) * 1000,
-                ];
-                if (!oldx) {
-                    oldx = xdomain[1];
-                }
-                xScale.domain(xdomain);
-                var ymin = d3.min(scope.data, function (d) {
-                    return d3.min(d.Data, function (c) {
-                        return c[1];
-                    });
-                });
-                var ymax = d3.max(scope.data, function (d) {
-                    return d3.max(d.Data, function (c) {
-                        return c[1];
-                    });
-                });
-                var diff = (ymax - ymin) / 50;
-                if (!diff) {
-                    diff = 1;
-                }
-                ymin -= diff;
-                ymax += diff;
-                if (yaxisZero) {
-                    if (ymin > 0) {
-                        ymin = 0;
-                    }
-                    else if (ymax < 0) {
-                        ymax = 0;
-                    }
-                }
-                var ydomain = [ymin, ymax];
-                if (angular.isNumber(scope.min)) {
-                    ydomain[0] = +scope.min;
-                }
-                if (angular.isNumber(scope.max)) {
-                    ydomain[1] = +scope.max;
-                }
-                yScale.domain(ydomain);
-                if (scope.generator == 'area') {
-                    line.y0(yScale(0));
-                }
-                svg.select('.x.axis').transition().call(xAxis);
-                svg.select('.y.axis').transition().call(yAxis);
-                svg.append('text').attr("class", "ylabel").attr("transform", "rotate(-90)").attr("y", -margin.left).attr("x", -(height / 2)).attr("dy", "1em").text(_.uniq(scope.data.map(function (v) {
-                    return v.Unit;
-                })).join("; "));
-                var queries = paths.selectAll('.line').data(scope.data, function (d) {
-                    return d.Name;
-                });
+                var svgHeight = +scope.height || 150;
+                var height = svgHeight - margin.top - margin.bottom;
+                var svgWidth;
+                var width;
+                var yScale = d3.scale.linear().range([height, 0]);
+                var xScale = d3.time.scale.utc();
+                var xAxis = d3.svg.axis()
+                    .orient('bottom');
+                var yAxis = d3.svg.axis()
+                    .scale(yScale)
+                    .orient('left')
+                    .ticks(Math.min(10, height / 20))
+                    .tickFormat(fmtfilter);
+                var line;
                 switch (scope.generator) {
                     case 'area':
-                        queries.enter().append('path').attr('stroke', function (d) {
-                            return color(d.Name);
-                        }).attr('class', 'line').style('fill', function (d) {
-                            return color(d.Name);
-                        });
+                        line = d3.svg.area();
                         break;
                     default:
-                        queries.enter().append('path').attr('stroke', function (d) {
-                            return color(d.Name);
-                        }).attr('class', 'line');
+                        line = d3.svg.line();
                 }
-                queries.exit().remove();
-                queries.attr('d', function (d) {
-                    return line(d.Data);
-                }).attr('transform', null).transition().ease('linear').attr('transform', 'translate(' + (xScale(oldx) - xScale(xdomain[1])) + ')');
-                chart.select('.x.brush').call(brush).selectAll('rect').attr('height', height).on('mouseover', function () {
-                    hover.style('display', 'block');
-                }).on('mouseout', function () {
-                    hover.style('display', 'none');
-                }).on('mousemove', mousemove);
-                chart.select('.x.brush .extent').style('stroke', '#fff').style('fill-opacity', '.125').style('shape-rendering', 'crispEdges');
-                oldx = xdomain[1];
-                drawLegend();
-            }
-            ;
-            var extentStart;
-            var extentEnd;
-            var extentDiff;
-            function brushed() {
-                var extent = brush.extent();
-                extentStart = datefmt(extent[0]);
-                extentEnd = datefmt(extent[1]);
-                extentDiff = fmtDuration(moment(extent[1]).diff(moment(extent[0])));
-                drawLegend();
-                if (scope.enableBrush && extentEnd != extentStart) {
-                    scope.brushStart = extentStart;
-                    scope.brushEnd = extentEnd;
+                var brush = d3.svg.brush()
+                    .x(xScale)
+                    .on('brush', brushed);
+                var top = d3.select(elem[0])
+                    .append('svg')
+                    .attr('height', svgHeight)
+                    .attr('width', '100%');
+                var svg = top
+                    .append('g')
+                    .attr('transform', 'translate(' + margin.left + ',' + margin.top + ')');
+                var defs = svg.append('defs')
+                    .append('clipPath')
+                    .attr('id', 'clip')
+                    .append('rect')
+                    .attr('height', height);
+                var chart = svg.append('g')
+                    .attr('pointer-events', 'all')
+                    .attr('clip-path', 'url(#clip)');
+                svg.append('g')
+                    .attr('class', 'x axis')
+                    .attr('transform', 'translate(0,' + height + ')');
+                svg.append('g')
+                    .attr('class', 'y axis');
+                var paths = chart.append('g');
+                chart.append('g')
+                    .attr('class', 'x brush');
+                top.append('rect')
+                    .style('opacity', 0)
+                    .attr('x', 0)
+                    .attr('y', 0)
+                    .attr('height', height)
+                    .attr('width', margin.left)
+                    .style('cursor', 'pointer')
+                    .on('click', yaxisToggle);
+                var legendTop = d3.select(elem[0]).append('div');
+                var xloc = legendTop.append('div');
+                xloc.style('float', 'left');
+                var brushText = legendTop.append('div');
+                brushText.style('float', 'right');
+                var legend = d3.select(elem[0]).append('div');
+                legend.style('clear', 'both');
+                var color = d3.scale.ordinal().range([
+                    '#e41a1c',
+                    '#377eb8',
+                    '#4daf4a',
+                    '#984ea3',
+                    '#ff7f00',
+                    '#a65628',
+                    '#f781bf',
+                    '#999999',
+                ]);
+                var mousex = 0;
+                var mousey = 0;
+                var oldx = 0;
+                var hover = svg.append('g')
+                    .attr('class', 'hover')
+                    .style('pointer-events', 'none')
+                    .style('display', 'none');
+                var hoverPoint = hover.append('svg:circle')
+                    .attr('r', 5);
+                var hoverRect = hover.append('svg:rect')
+                    .attr('fill', 'white');
+                var hoverText = hover.append('svg:text')
+                    .style('font-size', '12px');
+                var focus = svg.append('g')
+                    .attr('class', 'focus')
+                    .style('pointer-events', 'none');
+                focus.append('line');
+                var yaxisZero = false;
+                function yaxisToggle() {
+                    yaxisZero = !yaxisZero;
+                    draw();
+                }
+                var drawLegend = _.throttle(function (normalizeIdx) {
+                    var names = legend.selectAll('.series')
+                        .data(scope.data, function (d) { return d.Name; });
+                    names.enter()
+                        .append('div')
+                        .attr('class', 'series');
+                    names.exit()
+                        .remove();
+                    var xi = xScale.invert(mousex);
+                    xloc.text('Time: ' + fmtTime(xi));
+                    var t = xi.getTime() / 1000;
+                    var minDist = width + height;
+                    var minName, minColor;
+                    var minX, minY;
+                    names
+                        .each(function (d) {
+                        var idx = bisect(d.Data, t);
+                        if (idx >= d.Data.length) {
+                            idx = d.Data.length - 1;
+                        }
+                        var e = d3.select(this);
+                        var pt = d.Data[idx];
+                        if (pt) {
+                            e.attr('title', pt[normalizeIdx]);
+                            e.text(d.Name + ': ' + fmtfilter(pt[1]));
+                            var ptx = xScale(pt[0] * 1000);
+                            var pty = yScale(pt[normalizeIdx]);
+                            var ptd = Math.sqrt(Math.pow(ptx - mousex, 2) +
+                                Math.pow(pty - mousey, 2));
+                            if (ptd < minDist) {
+                                minDist = ptd;
+                                minX = ptx;
+                                minY = pty;
+                                minName = d.Name + ': ' + pt[1];
+                                minColor = color(d.Name);
+                            }
+                        }
+                    })
+                        .style('color', function (d) { return color(d.Name); });
+                    hover
+                        .attr('transform', 'translate(' + minX + ',' + minY + ')');
+                    hoverPoint.style('fill', minColor);
+                    hoverText
+                        .text(minName)
+                        .style('fill', minColor);
+                    var isRight = minX > width / 2;
+                    var isBottom = minY > height / 2;
+                    hoverText
+                        .attr('x', isRight ? -5 : 5)
+                        .attr('y', isBottom ? -8 : 15)
+                        .attr('text-anchor', isRight ? 'end' : 'start');
+                    var node = hoverText.node();
+                    var bb = node.getBBox();
+                    hoverRect
+                        .attr('x', bb.x - 1)
+                        .attr('y', bb.y - 1)
+                        .attr('height', bb.height + 2)
+                        .attr('width', bb.width + 2);
+                    var x = mousex;
+                    if (x > width) {
+                        x = 0;
+                    }
+                    focus.select('line')
+                        .attr('x1', x)
+                        .attr('x2', x)
+                        .attr('y1', 0)
+                        .attr('y2', height);
+                    if (extentStart) {
+                        var s = extentStart;
+                        if (extentEnd != extentStart) {
+                            s += ' - ' + extentEnd;
+                            s += ' (' + extentDiff + ')';
+                        }
+                        brushText.text(s);
+                    }
+                }, 50);
+                scope.$watch('data', update);
+                var w = angular.element($window);
+                scope.$watch(function () {
+                    return w.width();
+                }, resize, true);
+                w.bind('resize', function () {
                     scope.$apply();
+                });
+                function resize() {
+                    svgWidth = elem.width();
+                    if (svgWidth <= 0) {
+                        return;
+                    }
+                    width = svgWidth - margin.left - margin.right;
+                    xScale.range([0, width]);
+                    xAxis.scale(xScale);
+                    if (!mousex) {
+                        mousex = width + 1;
+                    }
+                    svg.attr('width', svgWidth);
+                    defs.attr('width', width);
+                    xAxis.ticks(width / 60);
+                    draw();
+                }
+                var oldx = 0;
+                var bisect = d3.bisector(function (d) { return d[0]; }).left;
+                function update(v) {
+                    if (!angular.isArray(v) || v.length == 0) {
+                        return;
+                    }
+                    resize();
+                }
+                function draw() {
+                    if (!scope.data) {
+                        return;
+                    }
+                    if (scope.normalize) {
+                        valueIdx = 2;
+                    }
+                    function mousemove() {
+                        var pt = d3.mouse(this);
+                        mousex = pt[0];
+                        mousey = pt[1];
+                        drawLegend(valueIdx);
+                    }
+                    scope.data.map(function (data, i) {
+                        var max = d3.max(data.Data, function (d) { return d[1]; });
+                        data.Data.map(function (d, j) {
+                            d.push(d[1] / max * 100 || 0);
+                        });
+                    });
+                    line.y(function (d) { return yScale(d[valueIdx]); });
+                    line.x(function (d) { return xScale(d[0] * 1000); });
+                    var xdomain = [
+                        d3.min(scope.data, function (d) { return d3.min(d.Data, function (c) { return c[0]; }); }) * 1000,
+                        d3.max(scope.data, function (d) { return d3.max(d.Data, function (c) { return c[0]; }); }) * 1000,
+                    ];
+                    if (!oldx) {
+                        oldx = xdomain[1];
+                    }
+                    xScale.domain(xdomain);
+                    var ymin = d3.min(scope.data, function (d) { return d3.min(d.Data, function (c) { return c[1]; }); });
+                    var ymax = d3.max(scope.data, function (d) { return d3.max(d.Data, function (c) { return c[valueIdx]; }); });
+                    var diff = (ymax - ymin) / 50;
+                    if (!diff) {
+                        diff = 1;
+                    }
+                    ymin -= diff;
+                    ymax += diff;
+                    if (yaxisZero) {
+                        if (ymin > 0) {
+                            ymin = 0;
+                        }
+                        else if (ymax < 0) {
+                            ymax = 0;
+                        }
+                    }
+                    var ydomain = [ymin, ymax];
+                    if (angular.isNumber(scope.min)) {
+                        ydomain[0] = +scope.min;
+                    }
+                    if (angular.isNumber(scope.max)) {
+                        ydomain[valueIdx] = +scope.max;
+                    }
+                    yScale.domain(ydomain);
+                    if (scope.generator == 'area') {
+                        line.y0(yScale(0));
+                    }
+                    svg.select('.x.axis')
+                        .transition()
+                        .call(xAxis);
+                    svg.select('.y.axis')
+                        .transition()
+                        .call(yAxis);
+                    svg.append('text')
+                        .attr("class", "ylabel")
+                        .attr("transform", "rotate(-90)")
+                        .attr("y", -margin.left)
+                        .attr("x", -(height / 2))
+                        .attr("dy", "1em")
+                        .text(_.uniq(scope.data.map(function (v) { return v.Unit; })).join("; "));
+                    var queries = paths.selectAll('.line')
+                        .data(scope.data, function (d) { return d.Name; });
+                    switch (scope.generator) {
+                        case 'area':
+                            queries.enter()
+                                .append('path')
+                                .attr('stroke', function (d) { return color(d.Name); })
+                                .attr('class', 'line')
+                                .style('fill', function (d) { return color(d.Name); });
+                            break;
+                        default:
+                            queries.enter()
+                                .append('path')
+                                .attr('stroke', function (d) { return color(d.Name); })
+                                .attr('class', 'line');
+                    }
+                    queries.exit()
+                        .remove();
+                    queries
+                        .attr('d', function (d) { return line(d.Data); })
+                        .attr('transform', null)
+                        .transition()
+                        .ease('linear')
+                        .attr('transform', 'translate(' + (xScale(oldx) - xScale(xdomain[1])) + ')');
+                    chart.select('.x.brush')
+                        .call(brush)
+                        .selectAll('rect')
+                        .attr('height', height)
+                        .on('mouseover', function () {
+                        hover.style('display', 'block');
+                    })
+                        .on('mouseout', function () {
+                        hover.style('display', 'none');
+                    })
+                        .on('mousemove', mousemove);
+                    chart.select('.x.brush .extent')
+                        .style('stroke', '#fff')
+                        .style('fill-opacity', '.125')
+                        .style('shape-rendering', 'crispEdges');
+                    oldx = xdomain[1];
+                    drawLegend(valueIdx);
+                }
+                ;
+                var extentStart;
+                var extentEnd;
+                var extentDiff;
+                function brushed() {
+                    var extent = brush.extent();
+                    extentStart = datefmt(extent[0]);
+                    extentEnd = datefmt(extent[1]);
+                    extentDiff = fmtDuration(moment(extent[1]).diff(moment(extent[0])));
+                    drawLegend(valueIdx);
+                    if (scope.enableBrush && extentEnd != extentStart) {
+                        scope.brushStart = extentStart;
+                        scope.brushEnd = extentEnd;
+                        scope.$apply();
+                    }
+                }
+                var mfmt = 'YYYY/MM/DD-HH:mm:ss';
+                function datefmt(d) {
+                    return moment(d).utc().format(mfmt);
                 }
             }
-            var mfmt = 'YYYY/MM/DD-HH:mm:ss';
-            function datefmt(d) {
-                return moment(d).utc().format(mfmt);
+        };
+    }]);
+bosunControllers.controller('ErrorCtrl', ['$scope', '$http', '$location', '$route', function ($scope, $http, $location, $route) {
+        $scope.loading = true;
+        $http.get('/api/errors')
+            .success(function (data) {
+            $scope.errors = [];
+            _(data).forEach(function (err, name) {
+                err.Name = name;
+                err.Sum = 0;
+                err.Shown = true;
+                _(err.Errors).forEach(function (line) {
+                    err.Sum += line.Count;
+                    line.FirstTime = moment.utc(line.FirstTime);
+                    line.LastTime = moment.utc(line.LastTime);
+                });
+                $scope.errors.push(err);
+            });
+        })
+            .error(function (data) {
+            $scope.error = "Error fetching data: " + data;
+        })
+            .finally(function () { $scope.loading = false; });
+        $scope.check = function (err) {
+            if (err.checked && !err.Shown) {
+                err.Shown = true;
             }
-        }
-    };
-}]);
+            _(err.Errors).forEach(function (line) {
+                line.checked = err.checked;
+            });
+        };
+        $scope.click = function (err, event) {
+            event.stopPropagation();
+        };
+        $scope.totalLines = function () {
+            var t = 0;
+            _($scope.errors).forEach(function (err) {
+                t += err.Errors.length;
+            });
+            return t;
+        };
+        $scope.selectedLines = function () {
+            var t = 0;
+            _($scope.errors).forEach(function (err) {
+                _(err.Errors).forEach(function (line) {
+                    if (line.checked) {
+                        t++;
+                    }
+                });
+            });
+            return t;
+        };
+        var getKeys = function (checkedOnly) {
+            var keys = [];
+            _($scope.errors).forEach(function (err) {
+                _(err.Errors).forEach(function (line) {
+                    if (!checkedOnly || line.checked) {
+                        keys.push({ alert: err.Name, start: line.FirstTime });
+                    }
+                });
+            });
+            return keys;
+        };
+        var clear = function (keys) {
+            $http.post('/api/errors', keys)
+                .success(function (data) {
+                $route.reload();
+            })
+                .error(function (data) {
+                $scope.error = "Error Clearing Errors: " + data;
+            });
+        };
+        $scope.clearAll = function () {
+            var keys = getKeys(false);
+            clear(keys);
+        };
+        $scope.clearSelected = function () {
+            var keys = getKeys(true);
+            clear(keys);
+        };
+        $scope.ruleLink = function (line, err) {
+            var url = "/config?alert=" + err.Name;
+            var fromDate = moment.utc(line.FirstTime);
+            url += "&fromDate=" + fromDate.format("YYYY-MM-DD");
+            url += "&fromTime=" + fromDate.format("hh:mm");
+            var toDate = moment.utc(line.LastTime);
+            url += "&toDate=" + toDate.format("YYYY-MM-DD");
+            url += "&toTime=" + toDate.format("hh:mm");
+            return url;
+        };
+    }]);
 bosunControllers.controller('ExprCtrl', ['$scope', '$http', '$location', '$route', function ($scope, $http, $location, $route) {
-    var search = $location.search();
-    var current;
-    try {
-        current = atob(search.expr);
-    }
-    catch (e) {
-        current = '';
-    }
-    if (!current) {
-        $location.search('expr', btoa('avg(q("avg:rate:os.cpu{host=*bosun*}", "5m", "")) > 80'));
-        return;
-    }
-    $scope.date = search.date || '';
-    $scope.time = search.time || '';
-    $scope.expr = current;
-    $scope.running = current;
-    $scope.tab = search.tab || 'results';
-    $scope.animate();
-    $http.get('/api/expr?q=' + encodeURIComponent(current) + '&date=' + encodeURIComponent($scope.date) + '&time=' + encodeURIComponent($scope.time)).success(function (data) {
-        $scope.result = data.Results;
-        $scope.queries = data.Queries;
-        $scope.result_type = data.Type;
-        if (data.Type == 'series') {
-            $scope.svg_url = '/api/egraph/' + btoa(current) + '.svg?now=' + Math.floor(Date.now() / 1000);
-            $scope.graph = toChart(data.Results);
+        var search = $location.search();
+        var current;
+        try {
+            current = atob(search.expr);
         }
-        $scope.running = '';
-    }).error(function (error) {
-        $scope.error = error;
-        $scope.running = '';
-    }).finally(function () {
-        $scope.stop();
-    });
-    $scope.set = function () {
-        $location.search('expr', btoa($scope.expr));
-        $location.search('date', $scope.date || null);
-        $location.search('time', $scope.time || null);
-        $route.reload();
-    };
-    function toChart(res) {
-        var graph = [];
-        angular.forEach(res, function (d, idx) {
-            var data = [];
-            angular.forEach(d.Value, function (val, ts) {
-                data.push([+ts, val]);
-            });
-            if (data.length == 0) {
-                return;
+        catch (e) {
+            current = '';
+        }
+        if (!current) {
+            $location.search('expr', btoa('avg(q("avg:rate:os.cpu{host=*bosun*}", "5m", "")) > 80'));
+            return;
+        }
+        $scope.date = search.date || '';
+        $scope.time = search.time || '';
+        $scope.expr = current;
+        $scope.running = current;
+        $scope.tab = search.tab || 'results';
+        $scope.animate();
+        $http.post('/api/expr?' +
+            'date=' + encodeURIComponent($scope.date) +
+            '&time=' + encodeURIComponent($scope.time), current)
+            .success(function (data) {
+            $scope.result = data.Results;
+            $scope.queries = data.Queries;
+            $scope.result_type = data.Type;
+            if (data.Type == 'series') {
+                $scope.svg_url = '/api/egraph/' + btoa(current) + '.svg?now=' + Math.floor(Date.now() / 1000);
+                $scope.graph = toChart(data.Results);
             }
-            var name = '{';
-            angular.forEach(d.Group, function (tagv, tagk) {
-                if (name.length > 1) {
-                    name += ',';
-                }
-                name += tagk + '=' + tagv;
-            });
-            name += '}';
-            var series = {
-                Data: data,
-                Name: name
-            };
-            graph[idx] = series;
+            $scope.running = '';
+        })
+            .error(function (error) {
+            $scope.error = error;
+            $scope.running = '';
+        })
+            .finally(function () {
+            $scope.stop();
         });
-        return graph;
-    }
-    $scope.keydown = function ($event) {
-        if ($event.keyCode == 13) {
-            $scope.set();
+        $scope.set = function () {
+            $location.search('expr', btoa($scope.expr));
+            $location.search('date', $scope.date || null);
+            $location.search('time', $scope.time || null);
+            $route.reload();
+        };
+        function toChart(res) {
+            var graph = [];
+            angular.forEach(res, function (d, idx) {
+                var data = [];
+                angular.forEach(d.Value, function (val, ts) {
+                    data.push([+ts, val]);
+                });
+                if (data.length == 0) {
+                    return;
+                }
+                var name = '{';
+                angular.forEach(d.Group, function (tagv, tagk) {
+                    if (name.length > 1) {
+                        name += ',';
+                    }
+                    name += tagk + '=' + tagv;
+                });
+                name += '}';
+                var series = {
+                    Data: data,
+                    Name: name
+                };
+                graph[idx] = series;
+            });
+            return graph;
         }
-    };
-}]);
+        $scope.keydown = function ($event) {
+            if ($event.shiftKey && $event.keyCode == 13) {
+                $scope.set();
+            }
+        };
+    }]);
 var TagSet = (function () {
     function TagSet() {
     }
@@ -1447,253 +1725,261 @@ var Request = (function () {
 })();
 var graphRefresh;
 bosunControllers.controller('GraphCtrl', ['$scope', '$http', '$location', '$route', '$timeout', function ($scope, $http, $location, $route, $timeout) {
-    $scope.aggregators = ["sum", "min", "max", "avg", "dev", "zimsum", "mimmin", "minmax"];
-    $scope.dsaggregators = ["", "sum", "min", "max", "avg", "dev", "zimsum", "mimmin", "minmax"];
-    $scope.rate_options = ["auto", "gauge", "counter", "rate"];
-    $scope.canAuto = {};
-    var search = $location.search();
-    var j = search.json;
-    if (search.b64) {
-        j = atob(search.b64);
-    }
-    var request = j ? JSON.parse(j) : new Request;
-    $scope.index = parseInt($location.hash()) || 0;
-    $scope.tagvs = [];
-    $scope.sorted_tagks = [];
-    $scope.query_p = [];
-    angular.forEach(request.queries, function (q, i) {
-        $scope.query_p[i] = new Query(q);
-    });
-    $scope.start = request.start;
-    $scope.end = request.end;
-    $scope.autods = search.autods != 'false';
-    $scope.refresh = search.refresh == 'true';
-    if (search.min) {
-        $scope.min = +search.min;
-    }
-    if (search.max) {
-        $scope.max = +search.max;
-    }
-    var duration_map = {
-        "s": "s",
-        "m": "m",
-        "h": "h",
-        "d": "d",
-        "w": "w",
-        "n": "M",
-        "y": "y"
-    };
-    var isRel = /^(\d+)(\w)-ago$/;
-    function RelToAbs(m) {
-        return moment().utc().subtract(parseFloat(m[1]), duration_map[m[2]]).format();
-    }
-    function AbsToRel(s) {
-        //Not strict parsing of the time format. For example, just "2014" will be valid
-        var t = moment.utc(s, moment.defaultFormat).fromNow();
-        return t;
-    }
-    function SwapTime(s) {
-        if (!s) {
-            return moment().utc().format();
+        $scope.aggregators = ["sum", "min", "max", "avg", "dev", "zimsum", "mimmin", "minmax"];
+        $scope.dsaggregators = ["", "sum", "min", "max", "avg", "dev", "zimsum", "mimmin", "minmax"];
+        $scope.rate_options = ["auto", "gauge", "counter", "rate"];
+        $scope.canAuto = {};
+        var search = $location.search();
+        var j = search.json;
+        if (search.b64) {
+            j = atob(search.b64);
         }
-        var m = isRel.exec(s);
-        if (m) {
-            return RelToAbs(m);
+        var request = j ? JSON.parse(j) : new Request;
+        $scope.index = parseInt($location.hash()) || 0;
+        $scope.tagvs = [];
+        $scope.sorted_tagks = [];
+        $scope.query_p = [];
+        angular.forEach(request.queries, function (q, i) {
+            $scope.query_p[i] = new Query(q);
+        });
+        $scope.start = request.start;
+        $scope.end = request.end;
+        $scope.autods = search.autods != 'false';
+        $scope.refresh = search.refresh == 'true';
+        $scope.normalize = search.normalize == 'true';
+        if (search.min) {
+            $scope.min = +search.min;
         }
-        return AbsToRel(s);
-    }
-    $scope.SwitchTimes = function () {
-        $scope.start = SwapTime($scope.start);
-        $scope.end = SwapTime($scope.end);
-    };
-    $scope.AddTab = function () {
-        $scope.index = $scope.query_p.length;
-        $scope.query_p.push(new Query);
-    };
-    $scope.setIndex = function (i) {
-        $scope.index = i;
-    };
-    $scope.GetTagKByMetric = function (index) {
-        $scope.tagvs[index] = new TagV;
-        var metric = $scope.query_p[index].metric;
-        if (!metric) {
-            $scope.canAuto[metric] = true;
-            return;
+        if (search.max) {
+            $scope.max = +search.max;
         }
-        $http.get('/api/tagk/' + metric).success(function (data) {
-            var q = $scope.query_p[index];
-            var tags = new TagSet;
-            q.metric_tags = {};
-            for (var i = 0; i < data.length; i++) {
-                var d = data[i];
-                q.metric_tags[d] = true;
-                if (q.tags) {
-                    tags[d] = q.tags[d];
-                }
-                if (!tags[d]) {
-                    tags[d] = '';
-                }
-                GetTagVs(d, index);
+        var duration_map = {
+            "s": "s",
+            "m": "m",
+            "h": "h",
+            "d": "d",
+            "w": "w",
+            "n": "M",
+            "y": "y"
+        };
+        var isRel = /^(\d+)(\w)-ago$/;
+        function RelToAbs(m) {
+            return moment().utc().subtract(parseFloat(m[1]), duration_map[m[2]]).format();
+        }
+        function AbsToRel(s) {
+            //Not strict parsing of the time format. For example, just "2014" will be valid
+            var t = moment.utc(s, moment.defaultFormat).fromNow();
+            return t;
+        }
+        function SwapTime(s) {
+            if (!s) {
+                return moment().utc().format();
             }
-            angular.forEach(q.tags, function (val, key) {
-                if (val) {
-                    tags[key] = val;
-                }
-            });
-            q.tags = tags;
-            // Make sure host is always the first tag.
-            $scope.sorted_tagks[index] = Object.keys(tags);
-            $scope.sorted_tagks[index].sort(function (a, b) {
-                if (a == 'host') {
-                    return -1;
-                }
-                else if (b == 'host') {
-                    return 1;
-                }
-                return a.localeCompare(b);
-            });
-        }).error(function (error) {
-            $scope.error = 'Unable to fetch metrics: ' + error;
-        });
-        $http.get('/api/metadata/get?metric=' + metric).success(function (data) {
-            var canAuto = false;
-            angular.forEach(data, function (val) {
-                if (val.Metric == metric && val.Name == 'rate') {
-                    canAuto = true;
-                }
-            });
-            $scope.canAuto[metric] = canAuto;
-        }).error(function (err) {
-            $scope.error = err;
-        });
-    };
-    if ($scope.query_p.length == 0) {
-        $scope.AddTab();
-    }
-    $http.get('/api/metric').success(function (data) {
-        $scope.metrics = data;
-    }).error(function (error) {
-        $scope.error = 'Unable to fetch metrics: ' + error;
-    });
-    function GetTagVs(k, index) {
-        $http.get('/api/tagv/' + k + '/' + $scope.query_p[index].metric).success(function (data) {
-            data.sort();
-            $scope.tagvs[index][k] = data;
-        }).error(function (error) {
-            $scope.error = 'Unable to fetch metrics: ' + error;
-        });
-    }
-    function getRequest() {
-        request = new Request;
-        request.start = $scope.start;
-        request.end = $scope.end;
-        angular.forEach($scope.query_p, function (p) {
-            if (!p.metric) {
+            var m = isRel.exec(s);
+            if (m) {
+                return RelToAbs(m);
+            }
+            return AbsToRel(s);
+        }
+        $scope.SwitchTimes = function () {
+            $scope.start = SwapTime($scope.start);
+            $scope.end = SwapTime($scope.end);
+        };
+        $scope.AddTab = function () {
+            $scope.index = $scope.query_p.length;
+            $scope.query_p.push(new Query);
+        };
+        $scope.setIndex = function (i) {
+            $scope.index = i;
+        };
+        $scope.GetTagKByMetric = function (index) {
+            $scope.tagvs[index] = new TagV;
+            var metric = $scope.query_p[index].metric;
+            if (!metric) {
+                $scope.canAuto[metric] = true;
                 return;
             }
-            var q = new Query(p);
-            var tags = q.tags;
-            q.tags = new TagSet;
-            angular.forEach(tags, function (v, k) {
-                if (v && k) {
-                    q.tags[k] = v;
+            $http.get('/api/tagk/' + metric)
+                .success(function (data) {
+                var q = $scope.query_p[index];
+                var tags = new TagSet;
+                q.metric_tags = {};
+                for (var i = 0; i < data.length; i++) {
+                    var d = data[i];
+                    q.metric_tags[d] = true;
+                    if (q.tags) {
+                        tags[d] = q.tags[d];
+                    }
+                    if (!tags[d]) {
+                        tags[d] = '';
+                    }
+                    GetTagVs(d, index);
                 }
+                angular.forEach(q.tags, function (val, key) {
+                    if (val) {
+                        tags[key] = val;
+                    }
+                });
+                q.tags = tags;
+                // Make sure host is always the first tag.
+                $scope.sorted_tagks[index] = Object.keys(tags);
+                $scope.sorted_tagks[index].sort(function (a, b) {
+                    if (a == 'host') {
+                        return -1;
+                    }
+                    else if (b == 'host') {
+                        return 1;
+                    }
+                    return a.localeCompare(b);
+                });
+            })
+                .error(function (error) {
+                $scope.error = 'Unable to fetch metrics: ' + error;
             });
-            request.queries.push(q);
+            $http.get('/api/metadata/metrics?metric=' + metric)
+                .success(function (data) {
+                var canAuto = data[metric] && data[metric].Type;
+                $scope.canAuto[metric] = canAuto;
+            })
+                .error(function (err) {
+                $scope.error = err;
+            });
+        };
+        if ($scope.query_p.length == 0) {
+            $scope.AddTab();
+        }
+        $http.get('/api/metric')
+            .success(function (data) {
+            $scope.metrics = data;
+        })
+            .error(function (error) {
+            $scope.error = 'Unable to fetch metrics: ' + error;
         });
-        return request;
-    }
-    $scope.Query = function () {
-        var r = getRequest();
-        angular.forEach($scope.query_p, function (q, index) {
-            var m = q.metric_tags;
-            if (!m) {
-                return;
-            }
-            angular.forEach(q.tags, function (key, tag) {
-                if (m[tag]) {
+        function GetTagVs(k, index) {
+            $http.get('/api/tagv/' + k + '/' + $scope.query_p[index].metric)
+                .success(function (data) {
+                data.sort();
+                $scope.tagvs[index][k] = data;
+            })
+                .error(function (error) {
+                $scope.error = 'Unable to fetch metrics: ' + error;
+            });
+        }
+        function getRequest() {
+            request = new Request;
+            request.start = $scope.start;
+            request.end = $scope.end;
+            angular.forEach($scope.query_p, function (p) {
+                if (!p.metric) {
                     return;
                 }
-                delete r.queries[index].tags[tag];
+                var q = new Query(p);
+                var tags = q.tags;
+                q.tags = new TagSet;
+                angular.forEach(tags, function (v, k) {
+                    if (v && k) {
+                        q.tags[k] = v;
+                    }
+                });
+                request.queries.push(q);
             });
-        });
-        r.prune();
-        $location.search('b64', btoa(JSON.stringify(r)));
-        $location.search('autods', $scope.autods ? undefined : 'false');
-        $location.search('refresh', $scope.refresh ? 'true' : undefined);
-        var min = angular.isNumber($scope.min) ? $scope.min.toString() : null;
-        var max = angular.isNumber($scope.max) ? $scope.max.toString() : null;
-        $location.search('min', min);
-        $location.search('max', max);
-        $route.reload();
-    };
-    request = getRequest();
-    if (!request.queries.length) {
-        return;
-    }
-    var autods = $scope.autods ? '&autods=' + $('#chart').width() : '';
-    function getMetricMeta(metric) {
-        $http.get('/api/metadata/metrics?metric=' + encodeURIComponent(metric)).success(function (data) {
-            if (Object.keys(data).length == 1) {
-                $scope.meta[metric] = data[metric];
-            }
-        }).error(function (error) {
-            console.log("Error getting metadata for metric " + metric);
-        });
-    }
-    function get(noRunning) {
-        $timeout.cancel(graphRefresh);
-        if (!noRunning) {
-            $scope.running = 'Running';
+            return request;
         }
-        var autorate = '';
-        $scope.meta = {};
-        for (var i = 0; i < request.queries.length; i++) {
-            if (request.queries[i].derivative == 'auto') {
-                autorate += '&autorate=' + i;
-            }
-            getMetricMeta(request.queries[i].metric);
+        $scope.Query = function () {
+            var r = getRequest();
+            angular.forEach($scope.query_p, function (q, index) {
+                var m = q.metric_tags;
+                if (!m) {
+                    return;
+                }
+                angular.forEach(q.tags, function (key, tag) {
+                    if (m[tag]) {
+                        return;
+                    }
+                    delete r.queries[index].tags[tag];
+                });
+            });
+            r.prune();
+            $location.search('b64', btoa(JSON.stringify(r)));
+            $location.search('autods', $scope.autods ? undefined : 'false');
+            $location.search('refresh', $scope.refresh ? 'true' : undefined);
+            $location.search('normalize', $scope.normalize ? 'true' : undefined);
+            var min = angular.isNumber($scope.min) ? $scope.min.toString() : null;
+            var max = angular.isNumber($scope.max) ? $scope.max.toString() : null;
+            $location.search('min', min);
+            $location.search('max', max);
+            $route.reload();
+        };
+        request = getRequest();
+        if (!request.queries.length) {
+            return;
         }
-        var min = angular.isNumber($scope.min) ? '&min=' + encodeURIComponent($scope.min.toString()) : '';
-        var max = angular.isNumber($scope.max) ? '&max=' + encodeURIComponent($scope.max.toString()) : '';
-        $scope.animate();
-        $scope.queryTime = '';
-        if (request.end && !isRel.exec(request.end)) {
-            var t = moment.utc(request.end, moment.defaultFormat);
-            $scope.queryTime = '&date=' + t.format('YYYY-MM-DD');
-            $scope.queryTime += '&time=' + t.format('HH:mm');
+        var autods = $scope.autods ? '&autods=' + $('#chart').width() : '';
+        function getMetricMeta(metric) {
+            $http.get('/api/metadata/metrics?metric=' + encodeURIComponent(metric))
+                .success(function (data) {
+                if (Object.keys(data).length == 1) {
+                    $scope.meta[metric] = data[metric];
+                }
+            })
+                .error(function (error) {
+                console.log("Error getting metadata for metric " + metric);
+            });
         }
-        $http.get('/api/graph?' + 'b64=' + encodeURIComponent(btoa(JSON.stringify(request))) + autods + autorate + min + max).success(function (data) {
-            $scope.result = data.Series;
-            if (!$scope.result) {
-                $scope.warning = 'No Results';
+        function get(noRunning) {
+            $timeout.cancel(graphRefresh);
+            if (!noRunning) {
+                $scope.running = 'Running';
             }
-            else {
-                $scope.warning = '';
+            var autorate = '';
+            $scope.meta = {};
+            for (var i = 0; i < request.queries.length; i++) {
+                if (request.queries[i].derivative == 'auto') {
+                    autorate += '&autorate=' + i;
+                }
+                getMetricMeta(request.queries[i].metric);
             }
-            $scope.queries = data.Queries;
-            $scope.running = '';
-            $scope.error = '';
-            var u = $location.absUrl();
-            u = u.substr(0, u.indexOf('?')) + '?';
-            u += 'b64=' + search.b64 + autods + autorate + min + max;
-            $scope.url = u;
-        }).error(function (error) {
-            $scope.error = error;
-            $scope.running = '';
-        }).finally(function () {
-            $scope.stop();
-            if ($scope.refresh) {
-                graphRefresh = $timeout(function () {
-                    get(true);
-                }, 5000);
+            var min = angular.isNumber($scope.min) ? '&min=' + encodeURIComponent($scope.min.toString()) : '';
+            var max = angular.isNumber($scope.max) ? '&max=' + encodeURIComponent($scope.max.toString()) : '';
+            $scope.animate();
+            $scope.queryTime = '';
+            if (request.end && !isRel.exec(request.end)) {
+                var t = moment.utc(request.end, moment.defaultFormat);
+                $scope.queryTime = '&date=' + t.format('YYYY-MM-DD');
+                $scope.queryTime += '&time=' + t.format('HH:mm');
             }
-            ;
-        });
-    }
-    ;
-    get(false);
-}]);
+            $http.get('/api/graph?' + 'b64=' + encodeURIComponent(btoa(JSON.stringify(request))) + autods + autorate + min + max)
+                .success(function (data) {
+                $scope.result = data.Series;
+                if (!$scope.result) {
+                    $scope.warning = 'No Results';
+                }
+                else {
+                    $scope.warning = '';
+                }
+                $scope.queries = data.Queries;
+                $scope.running = '';
+                $scope.error = '';
+                var u = $location.absUrl();
+                u = u.substr(0, u.indexOf('?')) + '?';
+                u += 'b64=' + search.b64 + autods + autorate + min + max;
+                $scope.url = u;
+            })
+                .error(function (error) {
+                $scope.error = error;
+                $scope.running = '';
+            })
+                .finally(function () {
+                $scope.stop();
+                if ($scope.refresh) {
+                    graphRefresh = $timeout(function () { get(true); }, 5000);
+                }
+                ;
+            });
+        }
+        ;
+        get(false);
+    }]);
 bosunApp.directive('tsPopup', function () {
     return {
         restrict: 'E',
@@ -2027,220 +2313,291 @@ bosunControllers.controller('PutCtrl', ['$scope', '$http', '$route', function ($
     };
 }]);
 bosunControllers.controller('SilenceCtrl', ['$scope', '$http', '$location', '$route', function ($scope, $http, $location, $route) {
-    var search = $location.search();
-    $scope.start = search.start;
-    $scope.end = search.end;
-    $scope.duration = search.duration;
-    $scope.alert = search.alert;
-    $scope.hosts = search.hosts;
-    $scope.tags = search.tags;
-    $scope.edit = search.edit;
-    $scope.forget = search.forget;
-    if (!$scope.end && !$scope.duration) {
-        $scope.duration = '1h';
-    }
-    function get() {
-        $http.get('/api/silence/get').success(function (data) {
-            $scope.silences = data;
-        }).error(function (error) {
-            $scope.error = error;
-        });
-    }
-    get();
-    function getData() {
-        var tags = ($scope.tags || '').split(',');
-        if ($scope.hosts) {
-            tags.push('host=' + $scope.hosts.split(/[ ,|]+/).join('|'));
+        var search = $location.search();
+        $scope.start = search.start;
+        $scope.end = search.end;
+        $scope.duration = search.duration;
+        $scope.alert = search.alert;
+        $scope.hosts = search.hosts;
+        $scope.tags = search.tags;
+        $scope.edit = search.edit;
+        $scope.forget = search.forget;
+        $scope.user = getUser();
+        $scope.message = search.message;
+        if (!$scope.end && !$scope.duration) {
+            $scope.duration = '1h';
         }
-        tags = tags.filter(function (v) {
-            return v != "";
-        });
-        var data = {
-            start: $scope.start,
-            end: $scope.end,
-            duration: $scope.duration,
-            alert: $scope.alert,
-            tags: tags.join(','),
-            edit: $scope.edit,
-            forget: $scope.forget ? 'true' : null
-        };
-        return data;
-    }
-    var any = search.start || search.end || search.duration || search.alert || search.hosts || search.tags || search.forget;
-    var state = getData();
-    $scope.change = function () {
-        $scope.disableConfirm = true;
-    };
-    if (any) {
-        $scope.error = null;
-        $http.post('/api/silence/set', state).success(function (data) {
-            if (!data) {
-                data = { '(none)': false };
+        function filter(data, startBefore, startAfter, endAfter, endBefore, limit) {
+            var ret = {};
+            var count = 0;
+            _.each(data, function (v, name) {
+                if (limit && count >= limit) {
+                    return;
+                }
+                var s = moment(v.Start).utc();
+                var e = moment(v.End).utc();
+                if (startBefore && s > startBefore) {
+                    return;
+                }
+                if (startAfter && s < startAfter) {
+                    return;
+                }
+                if (endAfter && e < endAfter) {
+                    return;
+                }
+                if (endBefore && e > endBefore) {
+                    return;
+                }
+                ret[name] = v;
+            });
+            return ret;
+        }
+        function get() {
+            $http.get('/api/silence/get')
+                .success(function (data) {
+                $scope.silences = [];
+                var now = moment.utc();
+                $scope.silences.push({
+                    name: 'Active',
+                    silences: filter(data, now, null, now, null, 0)
+                });
+                $scope.silences.push({
+                    name: 'Upcoming',
+                    silences: filter(data, null, now, null, null, 0)
+                });
+                $scope.silences.push({
+                    name: 'Past',
+                    silences: filter(data, null, null, null, now, 25)
+                });
+            })
+                .error(function (error) {
+                $scope.error = error;
+            });
+        }
+        get();
+        function getData() {
+            var tags = ($scope.tags || '').split(',');
+            if ($scope.hosts) {
+                tags.push('host=' + $scope.hosts.split(/[ ,|]+/).join('|'));
             }
-            $scope.testSilences = data;
-        }).error(function (error) {
-            $scope.error = error;
-        });
-    }
-    $scope.test = function () {
-        $location.search('start', $scope.start || null);
-        $location.search('end', $scope.end || null);
-        $location.search('duration', $scope.duration || null);
-        $location.search('alert', $scope.alert || null);
-        $location.search('hosts', $scope.hosts || null);
-        $location.search('tags', $scope.tags || null);
-        $location.search('forget', $scope.forget || null);
-        $route.reload();
-    };
-    $scope.confirm = function () {
-        $scope.error = null;
-        $scope.testSilences = null;
-        state.confirm = 'true';
-        $http.post('/api/silence/set', state).error(function (error) {
-            $scope.error = error;
-        }).finally(get);
-    };
-    $scope.clear = function (id) {
-        if (!window.confirm('Clear this silence?')) {
-            return;
-        }
-        $scope.error = null;
-        $http.post('/api/silence/clear', { id: id }).error(function (error) {
-            $scope.error = error;
-        }).finally(get);
-    };
-    $scope.time = function (v) {
-        var m = moment(v).utc();
-        return m.format();
-    };
-}]);
-bosunApp.directive('tsAckGroup', function () {
-    return {
-        scope: {
-            ack: '=',
-            groups: '=tsAckGroup',
-            schedule: '=',
-            timeanddate: '='
-        },
-        templateUrl: '/partials/ackgroup.html',
-        link: function (scope, elem, attrs) {
-            scope.canAckSelected = scope.ack == 'Needs Acknowledgement';
-            scope.panelClass = scope.$parent.panelClass;
-            scope.btoa = scope.$parent.btoa;
-            scope.encode = scope.$parent.encode;
-            scope.shown = {};
-            scope.collapse = function (i) {
-                scope.shown[i] = !scope.shown[i];
+            tags = tags.filter(function (v) { return v != ""; });
+            var data = {
+                start: $scope.start,
+                end: $scope.end,
+                duration: $scope.duration,
+                alert: $scope.alert,
+                tags: tags.join(','),
+                edit: $scope.edit,
+                forget: $scope.forget ? 'true' : null,
+                user: $scope.user,
+                message: $scope.message
             };
-            scope.click = function ($event, idx) {
-                scope.collapse(idx);
-                if ($event.shiftKey && scope.schedule.checkIdx != undefined) {
-                    var checked = scope.groups[scope.schedule.checkIdx].checked;
-                    var start = Math.min(idx, scope.schedule.checkIdx);
-                    var end = Math.max(idx, scope.schedule.checkIdx);
-                    for (var i = start; i <= end; i++) {
-                        if (i == idx) {
-                            continue;
+            return data;
+        }
+        var any = search.start || search.end || search.duration || search.alert || search.hosts || search.tags || search.forget;
+        var state = getData();
+        $scope.change = function () {
+            $scope.disableConfirm = true;
+        };
+        if (any) {
+            $scope.error = null;
+            $http.post('/api/silence/set', state)
+                .success(function (data) {
+                if (!data) {
+                    data = { '(none)': false };
+                }
+                $scope.testSilences = data;
+            })
+                .error(function (error) {
+                $scope.error = error;
+            });
+        }
+        $scope.test = function () {
+            setUser($scope.user);
+            $location.search('start', $scope.start || null);
+            $location.search('end', $scope.end || null);
+            $location.search('duration', $scope.duration || null);
+            $location.search('alert', $scope.alert || null);
+            $location.search('hosts', $scope.hosts || null);
+            $location.search('tags', $scope.tags || null);
+            $location.search('forget', $scope.forget || null);
+            $location.search('message', $scope.message || null);
+            $route.reload();
+        };
+        $scope.confirm = function () {
+            $scope.error = null;
+            $scope.testSilences = null;
+            state.confirm = 'true';
+            $http.post('/api/silence/set', state)
+                .error(function (error) {
+                $scope.error = error;
+            })
+                .finally(get);
+        };
+        $scope.clear = function (id) {
+            if (!window.confirm('Clear this silence?')) {
+                return;
+            }
+            $scope.error = null;
+            $http.post('/api/silence/clear?id=' + id, {})
+                .error(function (error) {
+                $scope.error = error;
+            })
+                .finally(get);
+        };
+        $scope.time = function (v) {
+            var m = moment(v).utc();
+            return m.format();
+        };
+    }]);
+bosunApp.directive('tsAckGroup', ['$location', function ($location) {
+        return {
+            scope: {
+                ack: '=',
+                groups: '=tsAckGroup',
+                schedule: '=',
+                timeanddate: '='
+            },
+            templateUrl: '/partials/ackgroup.html',
+            link: function (scope, elem, attrs) {
+                scope.canAckSelected = scope.ack == 'Needs Acknowledgement';
+                scope.panelClass = scope.$parent.panelClass;
+                scope.btoa = scope.$parent.btoa;
+                scope.encode = scope.$parent.encode;
+                scope.shown = {};
+                scope.collapse = function (i) {
+                    scope.shown[i] = !scope.shown[i];
+                };
+                scope.click = function ($event, idx) {
+                    scope.collapse(idx);
+                    if ($event.shiftKey && scope.schedule.checkIdx != undefined) {
+                        var checked = scope.groups[scope.schedule.checkIdx].checked;
+                        var start = Math.min(idx, scope.schedule.checkIdx);
+                        var end = Math.max(idx, scope.schedule.checkIdx);
+                        for (var i = start; i <= end; i++) {
+                            if (i == idx) {
+                                continue;
+                            }
+                            scope.groups[i].checked = checked;
                         }
+                    }
+                    scope.schedule.checkIdx = idx;
+                    scope.update();
+                };
+                scope.select = function (checked) {
+                    for (var i = 0; i < scope.groups.length; i++) {
                         scope.groups[i].checked = checked;
                     }
-                }
-                scope.schedule.checkIdx = idx;
-                scope.update();
-            };
-            scope.select = function (checked) {
-                for (var i = 0; i < scope.groups.length; i++) {
-                    scope.groups[i].checked = checked;
-                }
-                scope.update();
-            };
-            scope.update = function () {
-                scope.canCloseSelected = true;
-                scope.canForgetSelected = true;
-                scope.anySelected = false;
-                for (var i = 0; i < scope.groups.length; i++) {
-                    var g = scope.groups[i];
-                    if (!g.checked) {
-                        continue;
+                    scope.update();
+                };
+                scope.update = function () {
+                    scope.canCloseSelected = true;
+                    scope.canForgetSelected = true;
+                    scope.anySelected = false;
+                    for (var i = 0; i < scope.groups.length; i++) {
+                        var g = scope.groups[i];
+                        if (!g.checked) {
+                            continue;
+                        }
+                        scope.anySelected = true;
+                        if (g.Active && g.Status != 'unknown' && g.Status != 'error') {
+                            scope.canCloseSelected = false;
+                        }
+                        if (g.Status != 'unknown') {
+                            scope.canForgetSelected = false;
+                        }
                     }
-                    scope.anySelected = true;
-                    if (g.Active && g.Status != 'unknown' && g.Status != 'error') {
-                        scope.canCloseSelected = false;
-                    }
-                    if (g.Status != 'unknown') {
-                        scope.canForgetSelected = false;
-                    }
-                }
-            };
-            scope.multiaction = function (type) {
-                var url = '/action?type=' + type;
-                angular.forEach(scope.groups, function (group) {
-                    if (!group.checked) {
-                        return;
-                    }
-                    if (group.AlertKey) {
-                        url += '&key=' + encodeURIComponent(group.AlertKey);
-                    }
-                    angular.forEach(group.Children, function (child) {
-                        url += '&key=' + encodeURIComponent(child.AlertKey);
+                };
+                scope.multiaction = function (type) {
+                    var keys = [];
+                    angular.forEach(scope.groups, function (group) {
+                        if (!group.checked) {
+                            return;
+                        }
+                        if (group.AlertKey) {
+                            keys.push(group.AlertKey);
+                        }
+                        angular.forEach(group.Children, function (child) {
+                            keys.push(child.AlertKey);
+                        });
                     });
-                });
-                return url;
-            };
-            scope.history = function () {
-                var url = '/history?';
-                angular.forEach(scope.groups, function (group) {
-                    if (!group.checked) {
-                        return;
-                    }
-                    if (group.AlertKey) {
-                        url += '&key=' + encodeURIComponent(group.AlertKey);
-                    }
-                    angular.forEach(group.Children, function (child) {
-                        url += '&key=' + encodeURIComponent(child.AlertKey);
+                    scope.$parent.setKey("action-keys", keys);
+                    $location.path("action");
+                    $location.search("type", type);
+                };
+                scope.history = function () {
+                    var url = '/history?';
+                    angular.forEach(scope.groups, function (group) {
+                        if (!group.checked) {
+                            return;
+                        }
+                        if (group.AlertKey) {
+                            url += '&key=' + encodeURIComponent(group.AlertKey);
+                        }
+                        angular.forEach(group.Children, function (child) {
+                            url += '&key=' + encodeURIComponent(child.AlertKey);
+                        });
                     });
+                    return url;
+                };
+            }
+        };
+    }]);
+bosunApp.directive('tsState', ['$sce', '$http', function ($sce, $http) {
+        return {
+            templateUrl: '/partials/alertstate.html',
+            link: function (scope, elem, attrs) {
+                scope.name = scope.child.AlertKey;
+                scope.state = scope.child.State;
+                scope.action = function (type) {
+                    var key = encodeURIComponent(scope.name);
+                    return '/action?type=' + type + '&key=' + key;
+                };
+                var loadedBody = false;
+                scope.toggle = function () {
+                    scope.show = !scope.show;
+                    if (scope.show && !loadedBody) {
+                        scope.state.Body = "loading...";
+                        loadedBody = true;
+                        $http.get('/api/status?ak=' + scope.child.AlertKey)
+                            .success(function (data) {
+                            var body = data[scope.child.AlertKey].Body;
+                            scope.state.Body = $sce.trustAsHtml(body);
+                        })
+                            .error(function (err) {
+                            scope.state.Body = "Error loading template body: " + err;
+                        });
+                    }
+                };
+                scope.zws = function (v) {
+                    if (!v) {
+                        return '';
+                    }
+                    return v.replace(/([,{}()])/g, '$1\u200b');
+                };
+                scope.state.Touched = moment(scope.state.Touched).utc();
+                angular.forEach(scope.state.History, function (v, k) {
+                    v.Time = moment(v.Time).utc();
                 });
-                return url;
-            };
-        }
-    };
-});
-bosunApp.directive('tsState', ['$sce', function ($sce) {
-    return {
-        templateUrl: '/partials/alertstate.html',
-        link: function (scope, elem, attrs) {
-            scope.name = scope.child.AlertKey;
-            scope.state = scope.child.State;
-            scope.action = function (type) {
-                var key = encodeURIComponent(scope.name);
-                return '/action?type=' + type + '&key=' + key;
-            };
-            scope.zws = function (v) {
-                if (!v) {
-                    return '';
+                scope.state.last = scope.state.History[scope.state.History.length - 1];
+                if (scope.state.Actions && scope.state.Actions.length > 0) {
+                    scope.state.LastAction = scope.state.Actions[0];
                 }
-                return v.replace(/([,{}()])/g, '$1\u200b');
-            };
-            scope.state.Touched = moment(scope.state.Touched).utc();
-            angular.forEach(scope.state.History, function (v, k) {
-                v.Time = moment(v.Time).utc();
-            });
-            scope.state.last = scope.state.History[scope.state.History.length - 1];
-            if (scope.state.Actions && scope.state.Actions.length > 0) {
-                scope.state.LastAction = scope.state.Actions[0];
+                scope.state.RuleUrl = '/config?' +
+                    'alert=' + encodeURIComponent(scope.state.Alert) +
+                    '&fromDate=' + encodeURIComponent(scope.state.last.Time.format("YYYY-MM-DD")) +
+                    '&fromTime=' + encodeURIComponent(scope.state.last.Time.format("HH:mm"));
+                var groups = [];
+                angular.forEach(scope.state.Group, function (v, k) {
+                    groups.push(k + "=" + v);
+                });
+                if (groups.length > 0) {
+                    scope.state.RuleUrl += '&template_group=' + encodeURIComponent(groups.join(','));
+                }
+                scope.state.Body = $sce.trustAsHtml(scope.state.Body);
             }
-            scope.state.RuleUrl = '/config?' + 'alert=' + encodeURIComponent(scope.state.AlertName) + '&fromDate=' + encodeURIComponent(scope.state.last.Time.format("YYYY-MM-DD")) + '&fromTime=' + encodeURIComponent(scope.state.last.Time.format("HH:mm"));
-            var groups = [];
-            angular.forEach(scope.state.Group, function (v, k) {
-                groups.push(k + "=" + v);
-            });
-            if (groups.length > 0) {
-                scope.state.RuleUrl += '&template_group=' + encodeURIComponent(groups.join(','));
-            }
-            scope.state.Body = $sce.trustAsHtml(scope.state.Body);
-        }
-    };
-}]);
+        };
+    }]);
 bosunApp.directive('tsAck', function () {
     return {
         restrict: 'E',

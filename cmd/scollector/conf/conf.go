@@ -25,6 +25,9 @@ type Conf struct {
 	BatchSize int
 	// Filter filters collectors matching these terms.
 	Filter []string
+	// PProf is an IP:Port binding to be used for debugging with pprof package.
+	// Examples: localhost:6060 for loopback or :6060 for all IP addresses.
+	PProf string
 
 	// KeepalivedCommunity, if not empty, enables the Keepalived collector with
 	// the specified community.
@@ -39,6 +42,13 @@ type Conf struct {
 	Process       []ProcessParams
 	ProcessDotNet []ProcessDotNet
 	HTTPUnit      []HTTPUnit
+	Riak          []Riak
+	Github        []Github
+	// ElasticIndexFilters takes regular expressions and excludes indicies that
+	// match those filters from being monitored for metrics in the elastic.indices
+	// namespace
+	ElasticIndexFilters []string
+	RabbitMQ            []RabbitMQ
 }
 
 type HAProxy struct {
@@ -108,4 +118,17 @@ type ProcessDotNet struct {
 type HTTPUnit struct {
 	TOML  string
 	Hiera string
+}
+
+type Riak struct {
+	URL string
+}
+
+type RabbitMQ struct {
+	URL string
+}
+
+type Github struct {
+	Repo  string
+	Token string
 }
