@@ -251,7 +251,7 @@ func (s *Schedule) RestoreState() error {
 		}
 	}
 	if err := decode(dbInterval, &s.Interval); err != nil {
-		log.Println(dbInterval, err)
+		slog.Infoln("problem getting dbInterval", err)
 	}
 	if s.maxIncidentId == 0 {
 		s.createHistoricIncidents()

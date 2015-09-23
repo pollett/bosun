@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"math"
 	"time"
-	"regexp"
 
 	"bosun.org/_third_party/github.com/MiniProfiler/go/miniprofiler"
 	"bosun.org/cmd/bosun/cache"
