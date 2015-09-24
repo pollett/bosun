@@ -16,6 +16,8 @@ import (
 	"bosun.org/cmd/bosun/search"
 	"bosun.org/graphite"
 	"bosun.org/opentsdb"
+	"bosun.org/slog"
+
 )
 
 type State struct {
@@ -99,15 +101,27 @@ func (e *Expr) Execute(c opentsdb.Context, g graphite.Context, l LogstashElastic
 	return e.ExecuteState(s, T)
 }
 
+func LogComputations(r *Results) {
+       slice:=r.Results
+       for _,result := range slice{
+               slog.Infof("Group tags %v\n",result.Group)
+               for _,z := range result.Computations {
+                       slog.Infof("%v = %v \n", z.Text, z.Value)
+               }
+       }
+}
+
 func (e *Expr) ExecuteState(s *State, T miniprofiler.Timer) (r *Results, queries []opentsdb.Request, err error) {
 	defer errRecover(&err)
 	if T == nil {
 		T = new(miniprofiler.Profile)
-	} else {
-		s.enableComputations = true
 	}
+
+	s.enableComputations = true
+
 	T.Step("expr execute", func(T miniprofiler.Timer) {
 		r = s.walk(e.Tree.Root, T)
+		LogComputations(r)
 	})
 	queries = s.tsdbQueries
 	return
