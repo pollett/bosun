@@ -101,6 +101,12 @@ Default is 500.
 
 Filter (array of string): filters collectors matching these terms.
 
+MetricFilters (array of string): filters metrics matching these regular
+expressions.
+
+IfaceExpr (string): Replaces the default regular expression for interface name
+matching on Linux.
+
 PProf (string): optional IP:Port binding to be used for debugging with pprof.
 Examples: localhost:6060 for loopback or :6060 for all IP addresses.
 
@@ -144,7 +150,7 @@ to at a 5 minute poll interval.
 
 MIBs (map of string to table): Allows user-specified, custom SNMP configurations.
 
-    [[MIBs]]
+    [MIBs]
       [MIBs.cisco] #can name anything you want
         BaseOid = "1.3.6.1.4.1.9.9" # common base for all metrics in this mib
 
@@ -157,7 +163,7 @@ MIBs (map of string to table): Allows user-specified, custom SNMP configurations
           Description = "cpu percent used by this device"
 
         # can also iterate over snmp tables
-        [[MIBSs.cisco.Trees]]
+        [[MIBs.cisco.Trees]]
           BaseOid = ".48.1.1.1" #common base oid for this tree
 
           # tags to apply to metrics in this tree. Can come from another oid, or specify "idx" to use
@@ -229,6 +235,14 @@ Windows
 
 scollector has full Windows support. It can be run standalone, or installed as a
 service (see -winsvc). The Event Log is used when installed as a service.
+
+Cadvisor: Cadvisor endpoints to poll.
+Cadvisor collects system statistics about running containers.
+See https://github.com/google/cadvisor/ for documentation about configuring
+cadvisor.
+
+	[[Cadvisor]]
+		URL = "http://localhost:8080"
 
 */
 package main

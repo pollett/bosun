@@ -28,27 +28,37 @@ type Conf struct {
 	// PProf is an IP:Port binding to be used for debugging with pprof package.
 	// Examples: localhost:6060 for loopback or :6060 for all IP addresses.
 	PProf string
+	// MetricFilters takes regular expressions and includes only indicies that
+	// match those filters from being monitored
+	MetricFilters []string
 
 	// KeepalivedCommunity, if not empty, enables the Keepalived collector with
 	// the specified community.
 	KeepalivedCommunity string
 
-	HAProxy       []HAProxy
-	SNMP          []SNMP
-	MIBS          map[string]MIB
-	ICMP          []ICMP
-	Vsphere       []Vsphere
-	AWS           []AWS
-	Process       []ProcessParams
-	ProcessDotNet []ProcessDotNet
-	HTTPUnit      []HTTPUnit
-	Riak          []Riak
-	Github        []Github
+	//Override default network interface expression
+	IfaceExpr string
+
+	HAProxy        []HAProxy
+	SNMP           []SNMP
+	MIBS           map[string]MIB
+	ICMP           []ICMP
+	Vsphere        []Vsphere
+	AWS            []AWS
+	Process        []ProcessParams
+	SystemdService []ServiceParams
+	ProcessDotNet  []ProcessDotNet
+	HTTPUnit       []HTTPUnit
+	Riak           []Riak
+	Github         []Github
 	// ElasticIndexFilters takes regular expressions and excludes indicies that
 	// match those filters from being monitored for metrics in the elastic.indices
 	// namespace
 	ElasticIndexFilters []string
 	RabbitMQ            []RabbitMQ
+	Nexpose             []Nexpose
+	GoogleAnalytics     []GoogleAnalytics
+	Cadvisor            []Cadvisor
 }
 
 type HAProxy struct {
@@ -60,6 +70,27 @@ type HAProxy struct {
 type HAProxyInstance struct {
 	Tier string
 	URL  string
+}
+
+type Nexpose struct {
+	Username string
+	Password string
+	Host     string
+	Insecure bool
+}
+
+type GoogleAnalytics struct {
+	ClientID string
+	Secret   string
+	Token    string
+	Sites    []GoogleAnalyticsSite
+}
+
+type GoogleAnalyticsSite struct {
+	Name     string
+	Profile  string
+	Offset   int
+	Detailed bool
 }
 
 type ICMP struct {
@@ -98,6 +129,7 @@ type MIBMetric struct {
 	Description string
 	FallbackOid string // Oid to try if main one doesn't work. Used in cisco where different models use different oids
 	Tags        string // static tags to populate for this metric. "direction=in"
+	Scale       float64
 }
 
 type MIBTag struct {
@@ -131,4 +163,8 @@ type RabbitMQ struct {
 type Github struct {
 	Repo  string
 	Token string
+}
+
+type Cadvisor struct {
+	URL string
 }

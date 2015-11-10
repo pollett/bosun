@@ -14,6 +14,7 @@ import (
 	"path/filepath"
 	"runtime"
 	"strings"
+	"syscall"
 	"time"
 	"bosun.org/_third_party/github.com/facebookgo/httpcontrol"
 	"bosun.org/_third_party/gopkg.in/fsnotify.v1"
@@ -149,7 +150,7 @@ func main() {
 	}()
 	go func() {
 		sc := make(chan os.Signal, 1)
-		signal.Notify(sc, os.Interrupt)
+		signal.Notify(sc, os.Interrupt, syscall.SIGTERM)
 		killing := false
 		for range sc {
 			if killing {

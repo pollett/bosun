@@ -18,6 +18,7 @@ import (
 	"bosun.org/cmd/bosun/conf"
 	"bosun.org/cmd/bosun/expr"
 	"bosun.org/cmd/bosun/expr/parse"
+	"bosun.org/models"
 	"bosun.org/opentsdb"
 	"bosun.org/slog"
 )
@@ -46,12 +47,12 @@ func (s *Schedule) Data(rh *RunHistory, st *State, a *conf.Alert, isEmail bool) 
 type unknownContext struct {
 	Time  time.Time
 	Name  string
-	Group expr.AlertKeys
+	Group models.AlertKeys
 
 	schedule *Schedule
 }
 
-func (s *Schedule) unknownData(t time.Time, name string, group expr.AlertKeys) *unknownContext {
+func (s *Schedule) unknownData(t time.Time, name string, group models.AlertKeys) *unknownContext {
 	return &unknownContext{
 		Time:     t,
 		Group:    group,
@@ -81,7 +82,7 @@ func (c *Context) HostView(host string) string {
 func (c *Context) Expr(v string) string {
 	p := url.Values{}
 	p.Add("date", c.runHistory.Start.Format(`2006-01-02`))
-	p.Add("time", c.runHistory.Start.Format(`15:04`))
+	p.Add("time", c.runHistory.Start.Format(`15:04:05`))
 	p.Add("expr", base64.StdEncoding.EncodeToString([]byte(opentsdb.ReplaceTags(v, c.Group))))
 	return c.schedule.Conf.MakeLink("/expr", &p)
 }
@@ -93,7 +94,7 @@ func (c *Context) GraphLink(v string) string {
 	p.Add("expr", base64.StdEncoding.EncodeToString([]byte(v)))
 	p.Add("tab", "graph")
 	p.Add("date", c.runHistory.Start.Format(`2006-01-02`))
-	p.Add("time", c.runHistory.Start.Format(`15:04`))
+	p.Add("time", c.runHistory.Start.Format(`15:04:05`))
 	return c.schedule.Conf.MakeLink("/expr", &p)
 }
 
@@ -143,12 +144,11 @@ func (s *Schedule) ExecuteSubject(rh *RunHistory, a *conf.Alert, st *State, isEm
 
 var error_body = template.Must(template.New("body_error_template").Parse(`
 	<p>There was a runtime error processing alert {{.State.AlertKey}} using the {{.Alert.Template.Name}} template. The following errors occurred:</p>
-	{{if .Serr}}
-		<p>Subject: {{.Serr}}</p>
+	<ul>
+	{{range .Errors}}
+		<li>{{.}}</li>
 	{{end}}
-	{{if .Berr}}
-		<p>Body: {{.Berr}}</p>
-	{{end}}
+	</ul>
 	<p>Use <a href="{{.Rule}}">this link</a> to the rule page to correct this.</p>
 	<h2>Generic Alert Information</h2>
 	<p>Status: {{.Last.Status}}</p>
@@ -166,24 +166,13 @@ var error_body = template.Must(template.New("body_error_template").Parse(`
 		</tr>
 	{{end}}</table>`))
 
-func (s *Schedule) ExecuteBadTemplate(s_err, b_err error, rh *RunHistory, a *conf.Alert, st *State) (subject, body []byte, err error) {
-	sub := "error: template rendering error in the "
-	if s_err != nil {
-		sub += "subject"
-	}
-	if s_err != nil && b_err != nil {
-		sub += " and "
-	}
-	if b_err != nil {
-		sub += "body"
-	}
-	sub += fmt.Sprintf(" for alert %v", st.AlertKey())
+func (s *Schedule) ExecuteBadTemplate(errs []error, rh *RunHistory, a *conf.Alert, st *State) (subject, body []byte, err error) {
+	sub := fmt.Sprintf("error: template rendering error for alert %v", st.AlertKey())
 	c := struct {
-		Serr, Berr error
+		Errors []error
 		*Context
 	}{
-		Serr:    s_err,
-		Berr:    b_err,
+		Errors:  errs,
 		Context: s.Data(rh, st, a, true),
 	}
 	buf := new(bytes.Buffer)
@@ -202,7 +191,7 @@ func (c *Context) evalExpr(e *expr.Expr, filter bool, series bool, autods int) (
 	if series && e.Root.Return() != parse.TypeSeriesSet {
 		return nil, "", fmt.Errorf("need a series, got %T (%v)", e, e)
 	}
-	res, _, err := e.Execute(c.runHistory.Context, c.runHistory.GraphiteContext, c.runHistory.Logstash, c.runHistory.InfluxHost, c.runHistory.Cache, nil, c.runHistory.Start, autods, c.Alert.UnjoinedOK, c.schedule.Search, c.schedule.Conf.AlertSquelched(c.Alert), c.runHistory)
+	res, _, err := e.Execute(c.runHistory.Context, c.runHistory.GraphiteContext, c.runHistory.Logstash, c.runHistory.InfluxConfig, c.runHistory.Cache, nil, c.runHistory.Start, autods, c.Alert.UnjoinedOK, c.schedule.Search, c.schedule.Conf.AlertSquelched(c.Alert), c.runHistory)
 	if err != nil {
 		return nil, "", fmt.Errorf("%s: %v", e, err)
 	}
@@ -365,7 +354,10 @@ func (c *Context) GetMeta(metric, name string, v interface{}) (interface{}, erro
 	case opentsdb.TagSet:
 		t = v
 	}
-	meta := c.schedule.GetMetadata(metric, t)
+	meta, err := c.schedule.GetMetadata(metric, t)
+	if err != nil {
+		return nil, err
+	}
 	if name == "" {
 		return meta, nil
 	}

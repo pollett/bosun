@@ -18,10 +18,10 @@ import (
 	"bosun.org/_third_party/github.com/MiniProfiler/go/miniprofiler"
 	"bosun.org/_third_party/github.com/gorilla/mux"
 	"bosun.org/cmd/bosun/conf"
-	"bosun.org/cmd/bosun/expr"
 	"bosun.org/cmd/bosun/sched"
 	"bosun.org/collect"
 	"bosun.org/metadata"
+	"bosun.org/models"
 	"bosun.org/opentsdb"
 	"bosun.org/slog"
 	"bosun.org/util"
@@ -100,9 +100,9 @@ func Listen(listenAddr string, devMode bool, tsdbHost string) error {
 	router.Handle("/api/metadata/get", JSON(GetMetadata))
 	router.Handle("/api/metadata/metrics", JSON(MetadataMetrics))
 	router.Handle("/api/metadata/put", JSON(PutMetadata))
+	router.Handle("/api/metadata/delete", JSON(DeleteMetadata)).Methods("DELETE")
 	router.Handle("/api/metric", JSON(UniqueMetrics))
 	router.Handle("/api/metric/{tagk}/{tagv}", JSON(MetricsByTagPair))
-	router.Handle("/api/metric/tagkey", JSON(MetricsWithTagKeys))
 	router.Handle("/api/rule", JSON(Rule))
 	router.HandleFunc("/api/shorten", Shorten)
 	router.Handle("/api/silence/clear", JSON(SilenceClear))
@@ -112,6 +112,7 @@ func Listen(listenAddr string, devMode bool, tsdbHost string) error {
 	router.Handle("/api/tagk/{metric}", JSON(TagKeysByMetric))
 	router.Handle("/api/tagv/{tagk}", JSON(TagValuesByTagKey))
 	router.Handle("/api/tagv/{tagk}/{metric}", JSON(TagValuesByMetricTagKey))
+	router.Handle("/api/tagsets/{metric}", JSON(FilteredTagsetsByMetric))
 	router.HandleFunc("/api/version", Version)
 	router.Handle("/api/debug/schedlock", JSON(ScheduleLockStatus))
 	http.Handle("/", miniprofiler.NewHandler(Index))
@@ -308,13 +309,34 @@ func PutMetadata(t miniprofiler.Timer, w http.ResponseWriter, r *http.Request) (
 		return nil, err
 	}
 	for _, m := range ms {
-		schedule.PutMetadata(metadata.Metakey{
+		err := schedule.PutMetadata(metadata.Metakey{
 			Metric: m.Metric,
 			Tags:   m.Tags.Tags(),
 			Name:   m.Name,
 		}, m.Value)
+		if err != nil {
+			return nil, err
+		}
 	}
 	w.WriteHeader(204)
+	return nil, nil
+}
+
+func DeleteMetadata(t miniprofiler.Timer, w http.ResponseWriter, r *http.Request) (interface{}, error) {
+	d := json.NewDecoder(r.Body)
+	var ms []struct {
+		Tags opentsdb.TagSet
+		Name string
+	}
+	if err := d.Decode(&ms); err != nil {
+		return nil, err
+	}
+	for _, m := range ms {
+		err := schedule.DeleteMetadata(m.Tags, m.Name)
+		if err != nil {
+			return nil, err
+		}
+	}
 	return nil, nil
 }
 
@@ -328,12 +350,15 @@ func GetMetadata(t miniprofiler.Timer, w http.ResponseWriter, r *http.Request) (
 		}
 		tags[k] = vals[i]
 	}
-	return schedule.GetMetadata(r.FormValue("metric"), tags), nil
+	return schedule.GetMetadata(r.FormValue("metric"), tags)
 }
 
 func MetadataMetrics(t miniprofiler.Timer, w http.ResponseWriter, r *http.Request) (interface{}, error) {
 	metric := r.FormValue("metric")
-	return schedule.MetadataMetrics(metric), nil
+	if metric == "" {
+		return nil, fmt.Errorf("metric required")
+	}
+	return schedule.MetadataMetrics(metric)
 }
 
 func Alerts(t miniprofiler.Timer, w http.ResponseWriter, r *http.Request) (interface{}, error) {
@@ -363,7 +388,7 @@ func IncidentEvents(t miniprofiler.Timer, w http.ResponseWriter, r *http.Request
 		return nil, err
 	}
 	return struct {
-		Incident *sched.Incident
+		Incident *models.Incident
 		Events   []sched.Event
 		Actions  []sched.Action
 	}{incident, events, actions}, nil
@@ -388,7 +413,10 @@ func Incidents(t miniprofiler.Timer, w http.ResponseWriter, r *http.Request) (in
 		}
 		toTime = t
 	}
-	incidents := schedule.GetIncidents(alert, fromTime, toTime)
+	incidents, err := schedule.GetIncidents(alert, fromTime, toTime)
+	if err != nil {
+		return nil, err
+	}
 	maxIncidents := 200
 	if len(incidents) > maxIncidents {
 		incidents = incidents[:maxIncidents]
@@ -404,7 +432,7 @@ func Status(t miniprofiler.Timer, w http.ResponseWriter, r *http.Request) (inter
 	}
 	m := make(map[string]ExtStatus)
 	for _, k := range r.Form["ak"] {
-		ak, err := expr.ParseAlertKey(k)
+		ak, err := models.ParseAlertKey(k)
 		if err != nil {
 			return nil, err
 		}
@@ -441,9 +469,9 @@ func Action(t miniprofiler.Timer, w http.ResponseWriter, r *http.Request) (inter
 	}
 	errs := make(MultiError)
 	r.ParseForm()
-	successful := []expr.AlertKey{}
+	successful := []models.AlertKey{}
 	for _, key := range data.Keys {
-		ak, err := expr.ParseAlertKey(key)
+		ak, err := models.ParseAlertKey(key)
 		if err != nil {
 			return nil, err
 		}
@@ -568,7 +596,7 @@ func APIRedirect(w http.ResponseWriter, req *http.Request) {
 }
 
 func Host(t miniprofiler.Timer, w http.ResponseWriter, r *http.Request) (interface{}, error) {
-	return schedule.Host(r.FormValue("filter")), nil
+	return schedule.Host(r.FormValue("filter"))
 }
 
 // Last returns the most recent datapoint for a metric+tagset. The metric+tagset
@@ -579,7 +607,14 @@ func Last(t miniprofiler.Timer, w http.ResponseWriter, r *http.Request) (interfa
 	if r.FormValue("counter") != "" {
 		counter = true
 	}
-	return schedule.Search.GetLast(r.FormValue("metric"), r.FormValue("tagset"), counter)
+	val, timestamp, err := schedule.Search.GetLast(r.FormValue("metric"), r.FormValue("tagset"), counter)
+	return struct {
+		Value     float64
+		Timestamp int64
+	}{
+		val,
+		timestamp,
+	}, err
 }
 
 func Version(w http.ResponseWriter, r *http.Request) {
@@ -600,18 +635,38 @@ func ScheduleLockStatus(t miniprofiler.Timer, w http.ResponseWriter, r *http.Req
 
 func ErrorHistory(t miniprofiler.Timer, w http.ResponseWriter, r *http.Request) (interface{}, error) {
 	if r.Method == "GET" {
-		return schedule.GetErrorHistory(), nil
+		data, err := schedule.DataAccess.Errors().GetFullErrorHistory()
+		if err != nil {
+			return nil, err
+		}
+		type AlertStatus struct {
+			Success bool
+			Errors  []*models.AlertError
+		}
+		failingAlerts, err := schedule.DataAccess.Errors().GetFailingAlerts()
+		if err != nil {
+			return nil, err
+		}
+		m := make(map[string]*AlertStatus, len(data))
+		for a, list := range data {
+			m[a] = &AlertStatus{
+				Success: !failingAlerts[a],
+				Errors:  list,
+			}
+		}
+		return m, nil
 	}
-	data := []struct {
-		Alert string    `json:"Alert"`
-		Start time.Time `json:"Start"`
-	}{}
-	decoder := json.NewDecoder(r.Body)
-	if err := decoder.Decode(&data); err != nil {
-		return nil, err
-	}
-	for _, key := range data {
-		schedule.ClearErrorLine(key.Alert, key.Start)
+	if r.Method == "POST" {
+		data := []string{}
+		decoder := json.NewDecoder(r.Body)
+		if err := decoder.Decode(&data); err != nil {
+			return nil, err
+		}
+		for _, key := range data {
+			if err := schedule.ClearErrors(key); err != nil {
+				return nil, err
+			}
+		}
 	}
 	return nil, nil
 }

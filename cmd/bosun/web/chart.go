@@ -76,16 +76,18 @@ func Graph(t miniprofiler.Timer, w http.ResponseWriter, r *http.Request) (interf
 	for i, q := range oreq.Queries {
 		if ar[i] {
 
-			meta := schedule.MetadataMetrics(q.Metric)
-			data, found := meta[q.Metric]
-			if !found {
+			meta, err := schedule.MetadataMetrics(q.Metric)
+			if err != nil {
+				return nil, err
+			}
+			if meta == nil {
 				return nil, fmt.Errorf("no metadata for %s: cannot use auto rate", q)
 			}
-			if data.Unit != "" {
-				m_units[q.Metric] = data.Unit
+			if meta.Unit != "" {
+				m_units[q.Metric] = meta.Unit
 			}
-			if data.Type != "" {
-				switch data.Type {
+			if meta.Rate != "" {
+				switch meta.Rate {
 				case metadata.Gauge:
 					// ignore
 				case metadata.Rate:
@@ -97,7 +99,7 @@ func Graph(t miniprofiler.Timer, w http.ResponseWriter, r *http.Request) (interf
 						ResetValue: 1,
 					}
 				default:
-					return nil, fmt.Errorf("unknown metadata rate: %s", data.Type)
+					return nil, fmt.Errorf("unknown metadata rate: %s", meta.Rate)
 				}
 			}
 		}
@@ -207,7 +209,7 @@ func ExprGraph(t miniprofiler.Timer, w http.ResponseWriter, r *http.Request) (in
 	tsdbContext := schedule.Conf.TSDBContext()
 	graphiteContext := schedule.Conf.GraphiteContext()
 	ls := schedule.Conf.LogstashElasticHosts
-	influx := schedule.Conf.InfluxHost
+	influx := schedule.Conf.InfluxConfig
 	res, _, err := e.Execute(tsdbContext, graphiteContext, ls, influx, cacheObj, t, now, autods, false, schedule.Search, nil, nil)
 	if err != nil {
 		return nil, err

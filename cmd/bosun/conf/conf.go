@@ -18,10 +18,12 @@ import (
 	"time"
 
 	"bosun.org/_third_party/github.com/MiniProfiler/go/miniprofiler"
+	"bosun.org/_third_party/github.com/influxdb/influxdb/client"
 	"bosun.org/cmd/bosun/conf/parse"
 	"bosun.org/cmd/bosun/expr"
 	eparse "bosun.org/cmd/bosun/expr/parse"
 	"bosun.org/graphite"
+	"bosun.org/models"
 	"bosun.org/opentsdb"
 	"bosun.org/slog"
 )
@@ -41,6 +43,8 @@ type Conf struct {
 	PingDuration     time.Duration // Duration from now to stop pinging hosts based on time since the host tag was touched
 	EmailFrom        string
 	StateFile        string
+	LedisDir         string
+	RedisHost        string
 	TimeAndDate      []int // timeanddate.com cities list
 	ResponseLimit    int64
 	SearchSince      opentsdb.Duration
@@ -56,12 +60,13 @@ type Conf struct {
 	Quiet            bool
 	NoSleep          bool
 	ShortURLKey      string
+	MinGroupSize     int
 
 	TSDBHost             string                    // OpenTSDB relay and query destination: ny-devtsdb04:4242
 	GraphiteHost         string                    // Graphite query host: foo.bar.baz
 	GraphiteHeaders      []string                  // extra http headers when querying graphite.
 	LogstashElasticHosts expr.LogstashElasticHosts // CSV Elastic Hosts (All part of the same cluster) that stores logstash documents, i.e http://ny-elastic01:9200
-	InfluxHost           string
+	InfluxConfig         client.Config
 
 	tree            *parse.Tree
 	node            parse.Node
@@ -340,6 +345,8 @@ func New(name, text string) (c *Conf, err error) {
 		DefaultRunEvery:  1,
 		HTTPListen:       ":8070",
 		StateFile:        "bosun.state",
+		LedisDir:         "ledis_data",
+		MinGroupSize:     5,
 		PingDuration:     time.Hour * 24,
 		ResponseLimit:    1 << 20, // 1MB
 		SearchSince:      opentsdb.Day * 3,
@@ -413,7 +420,31 @@ func (c *Conf) loadGlobal(p *parse.PairNode) {
 	case "logstashElasticHosts":
 		c.LogstashElasticHosts = strings.Split(v, ",")
 	case "influxHost":
-		c.InfluxHost = v
+		c.InfluxConfig.URL.Host = v
+		c.InfluxConfig.UserAgent = "bosun"
+		// Default scheme to non-TLS
+		c.InfluxConfig.URL.Scheme = "http"
+	case "influxUsername":
+		c.InfluxConfig.Username = v
+	case "influxPassword":
+		c.InfluxConfig.Password = v
+	case "influxTLS":
+		b, err := strconv.ParseBool(v)
+		if err != nil {
+			c.error(err)
+		}
+		if b {
+			c.InfluxConfig.URL.Scheme = "https"
+		} else {
+			c.InfluxConfig.URL.Scheme = "http"
+		}
+	case "influxTimeout":
+		od, err := opentsdb.ParseDuration(v)
+		if err != nil {
+			c.error(err)
+		}
+		d := time.Duration(od)
+		c.InfluxConfig.Timeout = d
 	case "httpListen":
 		c.HTTPListen = v
 	case "hostname":
@@ -495,8 +526,16 @@ func (c *Conf) loadGlobal(p *parse.PairNode) {
 		}
 	case "shortURLKey":
 		c.ShortURLKey = v
-	case "ledisDir", "redisHost":
-		return //placeholders to allow easier migration in the future.
+	case "ledisDir":
+		c.LedisDir = v
+	case "redisHost":
+		c.RedisHost = v
+	case "minGroupSize":
+		i, err := strconv.Atoi(v)
+		if err != nil {
+			c.error(err)
+		}
+		c.MinGroupSize = i
 	default:
 		if !strings.HasPrefix(k, "$") {
 			c.errorf("unknown key %s", k)
@@ -635,7 +674,7 @@ func (c *Conf) loadLookup(s *parse.SectionNode) {
 				Def:  n.RawText,
 				Name: n.Name.Text,
 				ExprEntry: &ExprEntry{
-					AlertKey: expr.NewAlertKey("", tags),
+					AlertKey: models.NewAlertKey("", tags),
 					Values:   make(map[string]string),
 				},
 			}
@@ -1155,7 +1194,11 @@ func (c *Conf) Funcs() map[string]eparse.Func {
 		var tags []opentsdb.TagSet
 		for _, tag := range lookups.Tags {
 			var next []opentsdb.TagSet
-			for _, value := range e.Search.TagValuesByTagKey(tag, 0) {
+			vals, err := e.Search.TagValuesByTagKey(tag, 0)
+			if err != nil {
+				return nil, err
+			}
+			for _, value := range vals {
 				for _, s := range tags {
 					t := s.Copy()
 					t[tag] = value
@@ -1285,7 +1328,7 @@ func (c *Conf) Funcs() map[string]eparse.Func {
 	if len(c.LogstashElasticHosts) != 0 {
 		merge(expr.LogstashElastic)
 	}
-	if c.InfluxHost != "" {
+	if c.InfluxConfig.URL.Host != "" {
 		merge(expr.Influx)
 	}
 	return funcs

@@ -63,6 +63,7 @@ func (r *Request) Query(host string, header http.Header) (Response, error) {
 		if u.Path != "" {
 			r.URL.Path = u.Path
 		}
+		r.URL.User = u.User
 	}
 
 	log.Printf("Graphite request %v \n",r.URL)

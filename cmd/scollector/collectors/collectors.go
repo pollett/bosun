@@ -2,9 +2,12 @@ package collectors // import "bosun.org/cmd/scollector/collectors"
 
 import (
 	"bufio"
+	"encoding/json"
 	"fmt"
 	"net"
 	"os"
+	"regexp"
+	"sort"
 	"strings"
 	"sync"
 	"time"
@@ -20,7 +23,7 @@ import (
 var collectors []Collector
 
 type Collector interface {
-	Run(chan<- *opentsdb.DataPoint)
+	Run(chan<- *opentsdb.DataPoint, <-chan struct{})
 	Name() string
 	Init()
 }
@@ -57,6 +60,7 @@ const (
 	osNetMTU           = "os.net.mtu"
 	osNetAdminStatus   = "os.net.admin_status"
 	osNetOperStatus    = "os.net.oper_status"
+	osServiceRunning   = "os.service.running"
 )
 
 const (
@@ -82,6 +86,7 @@ const (
 	osNetMTUDesc         = "The maximum transmission unit for the ethernet frame."
 	osNetAdminStatusDesc = "The desired state of the interface. The testing(3) state indicates that no operational packets can be passed. When a managed system initializes, all interfaces start with ifAdminStatus in the down(2) state. As a result of either explicit management action or per configuration information retained by the managed system, ifAdminStatus is then changed to either the up(1) or testing(3) states (or remains in the down(2) state)."
 	osNetOperStatusDesc  = "The current operational state of the interface. The testing(3) state indicates that no operational packets can be passed. If ifAdminStatus is down(2) then ifOperStatus should be down(2). If ifAdminStatus is changed to up(1) then ifOperStatus should change to up(1) if the interface is ready to transmit and receive network traffic; it should change to dormant(5) if the interface is waiting for external actions (such as a serial line waiting for an incoming connection); it should remain in the down(2) state if and only if there is a fault that prevents it from going to the up(1) state; it should remain in the notPresent(6) state if the interface has missing (typically, hardware) components."
+	osServiceRunningDesc = "1: active, 0: inactive"
 )
 
 var (
@@ -92,6 +97,8 @@ var (
 	timestamp = time.Now().Unix()
 	tlock     sync.Mutex
 	AddTags   opentsdb.TagSet
+
+	metricFilters = make([]*regexp.Regexp, 0)
 
 	AddProcessDotNetConfig = func(params conf.ProcessDotNet) error {
 		return fmt.Errorf("process_dotnet watching not implemented on this platform")
@@ -136,15 +143,16 @@ func Search(s []string) []Collector {
 }
 
 // Run runs specified collectors. Use nil for all collectors.
-func Run(cs []Collector) chan *opentsdb.DataPoint {
+func Run(cs []Collector) (chan *opentsdb.DataPoint, chan struct{}) {
 	if cs == nil {
 		cs = collectors
 	}
 	ch := make(chan *opentsdb.DataPoint)
+	quit := make(chan struct{})
 	for _, c := range cs {
-		go c.Run(ch)
+		go c.Run(ch, quit)
 	}
-	return ch
+	return ch, quit
 }
 
 type initFunc func(*conf.Conf)
@@ -171,6 +179,10 @@ type MetricMeta struct {
 
 // AddTS is the same as Add but lets you specify the timestamp
 func AddTS(md *opentsdb.MultiDataPoint, name string, ts int64, value interface{}, t opentsdb.TagSet, rate metadata.RateType, unit metadata.Unit, desc string) {
+	// Check if we really want that metric
+	if skipMetric(name) {
+		return
+	}
 	if b, ok := value.(bool); ok {
 		if b {
 			value = 1
@@ -271,18 +283,45 @@ func metaIfaces(f func(iface net.Interface, tags opentsdb.TagSet)) {
 		if strings.HasPrefix(iface.Name, "lo") {
 			continue
 		}
-		tags := opentsdb.TagSet{"iface": fmt.Sprint("Interface", iface.Index)}
+		tags := opentsdb.TagSet{"iface": iface.Name}
 		metadata.AddMeta("", tags, "name", iface.Name, true)
-		if mac := iface.HardwareAddr.String(); mac != "" {
-			metadata.AddMeta("", tags, "mac", iface.HardwareAddr.String(), true)
+		if mac := strings.ToUpper(strings.Replace(iface.HardwareAddr.String(), ":", "", -1)); mac != "" {
+			metadata.AddMeta("", tags, "mac", mac, true)
 		}
-		ads, _ := iface.Addrs()
-		for i, ad := range ads {
-			addr := strings.Split(ad.String(), "/")[0]
-			metadata.AddMeta("", opentsdb.TagSet{"addr": fmt.Sprint("Addr", i)}.Merge(tags), "addr", addr, true)
+		rawAds, _ := iface.Addrs()
+		addrs := make([]string, len(rawAds))
+		for i, rAd := range rawAds {
+			addrs[i] = rAd.String()
 		}
+		sort.Strings(addrs)
+		j, _ := json.Marshal(addrs)
+		metadata.AddMeta("", tags, "addresses", string(j), true)
 		if f != nil {
 			f(iface, tags)
 		}
 	}
+}
+
+// AddMetricFilters adds metric filters provided by the conf
+func AddMetricFilters(s string) error {
+	re, err := regexp.Compile(s)
+	if err != nil {
+		return err
+	}
+	metricFilters = append(metricFilters, re)
+	return nil
+}
+
+// skipMetric will return true if we need to skip this metric
+func skipMetric(index string) bool {
+	// If no filters provided, we skip nothing
+	if len(metricFilters) == 0 {
+		return false
+	}
+	for _, re := range metricFilters {
+		if re.MatchString(index) {
+			return false
+		}
+	}
+	return true
 }
