@@ -2,6 +2,8 @@ package sched
 
 import (
 	"fmt"
+	"log"
+	"regexp"
 	"time"
 
 	"bosun.org/cmd/bosun/cache"
@@ -38,10 +40,24 @@ func (s *Schedule) updateCheckContext() {
 }
 func (s *Schedule) RunAlert(a *conf.Alert) {
 	for {
-		wait := time.After(s.Conf.CheckFrequency * time.Duration(a.RunEvery))
-		s.checkAlert(a)
-		s.LastCheck = time.Now()
-		<-wait
+
+		if a.RunAt != "" {
+			wait := time.After(s.Conf.CheckFrequency)
+			currentTime := time.Now().Format(time.ANSIC)
+			matched, err := regexp.MatchString(a.RunAt, currentTime)
+			if err != nil {
+				log.Printf("Problem with regexp %v", a.RunAt)
+			} else if matched {
+				s.checkAlert(a)
+				s.LastCheck = time.Now()
+				<-wait
+			}
+		} else {
+			wait := time.After(s.Conf.CheckFrequency * time.Duration(a.RunEvery))
+			s.checkAlert(a)
+			s.LastCheck = time.Now()
+			<-wait
+		}
 	}
 }
 
