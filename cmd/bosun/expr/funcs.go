@@ -114,6 +114,12 @@ var TSDB = map[string]parse.Func{
 		Tags:   tagQuery,
 		F:      Band,
 	},
+	"bandRange": {
+		Args:   []parse.FuncType{parse.TypeString, parse.TypeString, parse.TypeString, parse.TypeString, parse.TypeScalar},
+		Return: parse.TypeSeriesSet,
+		Tags:   tagQuery,
+		F:      BandRange,
+	},
 	"change": {
 		Args:   []parse.FuncType{parse.TypeString, parse.TypeString, parse.TypeString},
 		Return: parse.TypeNumberSet,
@@ -728,6 +734,79 @@ func bandTSDB(e *State, T miniprofiler.Timer, query, duration, period string, nu
 	return
 }
 
+func bandRangeTSDB(e *State, T miniprofiler.Timer, query, rangeStart, rangeEnd, period string, num float64, rfunc func(*Results, *opentsdb.Response) error) (r *Results, err error) {
+
+	r = new(Results)
+	r.IgnoreOtherUnjoined = true
+	r.IgnoreUnjoined = true
+	T.Step("bandRange", func(T miniprofiler.Timer) {
+		var from, to, p opentsdb.Duration
+		from, err = opentsdb.ParseDuration(rangeStart)
+		if err != nil {
+			return
+		}
+
+		to, err = opentsdb.ParseDuration(rangeEnd)
+		if err != nil {
+			return
+		}
+
+		p, err = opentsdb.ParseDuration(period)
+		if err != nil {
+			return
+		}
+
+		if num < 1 || num > 100 {
+			err = fmt.Errorf("num out of bounds")
+		}
+		var q *opentsdb.Query
+		q, err = opentsdb.ParseQuery(query)
+		if err != nil {
+			return
+		}
+
+		if err = e.Search.Expand(q); err != nil {
+			return
+		}
+
+		req := opentsdb.Request{
+			Queries: []*opentsdb.Query{q},
+		}
+		now := e.now
+
+	  req.End = now.Unix()
+		st := now.Add(time.Duration(from)).Unix()
+		 req.Start = st
+
+		if err = req.SetTime(e.now); err != nil {
+			return
+		}
+
+		for i := 0; i < int(num); i++ {
+			now = now.Add(time.Duration(-p))
+			end := now.Add(time.Duration(-to)).Unix()
+			req.End = &end
+			st := now.Add(time.Duration(-from)).Unix()
+			req.Start = &st
+
+			var s opentsdb.ResponseSet
+			s, err = timeTSDBRequest(e, T, &req)
+			if err != nil {
+				return
+			}
+			for _, res := range s {
+				if e.squelched(res.Tags) {
+					continue
+				}
+				if err = rfunc(r, res); err != nil {
+					return
+				}
+			}
+		}
+	})
+	return
+}
+
 func Window(e *State, T miniprofiler.Timer, query, duration, period string, num float64, rfunc string) (*Results, error) {
 	fn, ok := e.GetFunction(rfunc)
 	if !ok {
@@ -841,6 +920,47 @@ func Band(e *State, T miniprofiler.Timer, query, duration, period string, num fl
 	}
 	return
 }
+
+func BandRange(e *State, T miniprofiler.Timer, query, start, end, period string, num float64) (r *Results, err error) {
+	log.Printf("in bandRange")
+
+	r, err = bandRangeTSDB(e, T, query, start, end, period, num, func(r *Results, res *opentsdb.Response) error {
+		newarr := true
+		for _, a := range r.Results {
+			if !a.Group.Equal(res.Tags) {
+				continue
+			}
+			newarr = false
+			values := a.Value.(Series)
+			for k, v := range res.DPS {
+				i, e := strconv.ParseInt(k, 10, 64)
+				if e != nil {
+					return e
+				}
+				values[time.Unix(i, 0).UTC()] = float64(v)
+			}
+		}
+		if newarr {
+			values := make(Series)
+			a := &Result{Group: res.Tags}
+			for k, v := range res.DPS {
+				i, e := strconv.ParseInt(k, 10, 64)
+				if e != nil {
+					return e
+				}
+				values[time.Unix(i, 0).UTC()] = float64(v)
+			}
+			a.Value = values
+			r.Results = append(r.Results, a)
+		}
+		return nil
+	})
+	if err != nil {
+		err = fmt.Errorf("expr: BandRange: %v", err)
+	}
+	return
+}
+
 
 func GraphiteQuery(e *State, T miniprofiler.Timer, query string, sduration, eduration, format string) (r *Results, err error) {
 	sd, err := opentsdb.ParseDuration(sduration)
