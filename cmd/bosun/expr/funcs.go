@@ -789,8 +789,6 @@ func bandRangeTSDB(e *State, T miniprofiler.Timer, query, rangeStart, rangeEnd, 
 			st := now.Add(time.Duration(-from)).Unix()
 			req.Start = &st
 
-			log.Printf("\n Slice %v start: %v end %v: ",i,st,end)
-
 			var s opentsdb.ResponseSet
 			s, err = timeTSDBRequest(e, T, &req)
 			if err != nil {
