@@ -3,13 +3,13 @@ package expr
 import (
 	"encoding/json"
 	"fmt"
+	"log"
 	"math"
 	"reflect"
 	"sort"
 	"strconv"
 	"strings"
 	"time"
-	"log"
 
 	"bosun.org/_third_party/github.com/GaryBoone/GoStats/stats"
 	"bosun.org/_third_party/github.com/MiniProfiler/go/miniprofiler"
@@ -99,7 +99,7 @@ var Graphite = map[string]parse.Func{
 		F:      GraphiteQuery,
 	},
 	"graphiteBandRange": {
-		Args:   []parse.FuncType{parse.TypeString, parse.TypeString, parse.TypeString, parse.TypeString, parse.TypeString, parse.TypeScalar},
+		Args:   []parse.FuncType{parse.TypeString, parse.TypeString, parse.TypeString, parse.TypeString, parse.TypeString, parse.TypeScalar, parse.TypeString},
 		Return: parse.TypeSeriesSet,
 		Tags:   graphiteRangeTagQuery,
 		F:      GraphiteBandRange,
@@ -573,8 +573,7 @@ func GraphiteBand(e *State, T miniprofiler.Timer, query, duration, period, forma
 	return
 }
 
-
-func GraphiteBandRange(e *State, T miniprofiler.Timer, query, rangeStart, rangeEnd, period, format string, num float64) (r *Results, err error) {
+func GraphiteBandRange(e *State, T miniprofiler.Timer, query, rangeStart, rangeEnd, period, format string, num float64, align string) (r *Results, err error) {
 	r = new(Results)
 	r.IgnoreOtherUnjoined = true
 	r.IgnoreUnjoined = true
@@ -610,7 +609,17 @@ func GraphiteBandRange(e *State, T miniprofiler.Timer, query, rangeStart, rangeE
 			req.End = &end
 			st := now.Add(time.Duration(-from))
 			req.Start = &st
-			log.Printf("Executing graphite band  st %v end %v \n", st,end)
+			if align != "" {
+				if align != "m" && align != "h" && align != "d" {
+					log.Printf("GraphiteBandRange: Invalid align:'%s'\n", align)
+				} else {
+					end = roundUpDate(end, align)
+					req.End = &end
+					st = roundUpDate(st, align)
+					req.Start = &st
+				}
+			}
+			log.Printf("Executing graphite band  st %v end %v \n", st, end)
 			var s graphite.Response
 			s, err = timeGraphiteRequest(e, T, req)
 			if err != nil {
@@ -653,6 +662,31 @@ func GraphiteBandRange(e *State, T miniprofiler.Timer, query, rangeStart, rangeE
 	return
 }
 
+func roundUpDate(origin time.Time, align string) time.Time {
+	if align == "m" {
+		if origin.Second() != 0 {
+			t := time.Date(origin.Year(), origin.Month(), origin.Day(), origin.Hour(), origin.Minute(), 0, 0, time.UTC)
+			d, _ := time.ParseDuration("1m")
+			t = t.Add(d)
+			return t
+		}
+	} else if align == "h" {
+		if origin.Minute() != 0 || origin.Second() != 0 {
+			t := time.Date(origin.Year(), origin.Month(), origin.Day(), origin.Hour(), 0, 0, 0, time.UTC)
+			d, _ := time.ParseDuration("1h")
+			t = t.Add(d)
+			return t
+		}
+	} else if align == "d" {
+		if origin.Hour() != 0 || origin.Minute() != 0 || origin.Second() != 0 {
+			t := time.Date(origin.Year(), origin.Month(), origin.Day(), 0, 0, 0, 0, time.UTC)
+			d, _ := time.ParseDuration("24h")
+			t = t.Add(d)
+			return t
+		}
+	}
+	return origin
+}
 
 func bandTSDB(e *State, T miniprofiler.Timer, query, duration, period string, num float64, rfunc func(*Results, *opentsdb.Response) error) (r *Results, err error) {
 	r = new(Results)
