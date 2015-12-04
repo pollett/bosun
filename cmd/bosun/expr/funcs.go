@@ -764,7 +764,7 @@ func bandRangeTSDB(e *State, T miniprofiler.Timer, query, rangeStart, rangeEnd, 
 			err = fmt.Errorf("num out of bounds")
 		}
 		var q *opentsdb.Query
-		q, err = opentsdb.ParseQuery(query)
+		q, err = opentsdb.ParseQuery(query,e.tsdbContext.Version())
 		if err != nil {
 			return
 		}
