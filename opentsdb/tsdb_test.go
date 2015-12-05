@@ -67,6 +67,9 @@ func TestParseQueryV2_2(t *testing.T) {
 		// return errors. This is because there can be a regex filter now. Might
 		// be issues with escaping there however
 		{"sum:stat{a=b=c}", false},
+
+		// Check support for 2.2 fill policies
+		{"sum:10m-avg-zero:rate{counter,1,2}:proc.stat.cpu{}{t=wildcard(v*)}", false},
 	}
 	for _, q := range tests {
 		_, err := ParseQuery(q.query, Version2_2)
