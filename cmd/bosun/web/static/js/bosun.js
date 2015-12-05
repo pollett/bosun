@@ -1627,7 +1627,11 @@ var RateOptions = (function () {
     return RateOptions;
 })();
 var Filter = (function () {
-    function Filter() {
+    function Filter(f) {
+        this.type = f && f.type || "auto";
+        this.tagk = f && f.tagk || "";
+        this.filter = f && f.filter || "";
+        this.groupBy = f && f.groupBy || false;
     }
     return Filter;
 })();
@@ -1751,7 +1755,7 @@ bosunControllers.controller('GraphCtrl', ['$scope', '$http', '$location', '$rout
         $scope.version = $version.data;
         $scope.aggregators = ["sum", "min", "max", "avg", "dev", "zimsum", "mimmin", "minmax"];
         $scope.dsaggregators = ["", "sum", "min", "max", "avg", "dev", "zimsum", "mimmin", "minmax"];
-        $scope.filters = ["iliteral_or", "iwildcard", "literal_or", "not_iliteral_or", "not_literal_or", "regexp", "wildcard"];
+        $scope.filters = ["auto", "iliteral_or", "iwildcard", "literal_or", "not_iliteral_or", "not_literal_or", "regexp", "wildcard"];
         if ($scope.version.Major >= 2 && $scope.version.Minor >= 2) {
             $scope.filterSupport = true;
         }
@@ -1844,14 +1848,12 @@ bosunControllers.controller('GraphCtrl', ['$scope', '$http', '$location', '$rout
                         if (!q.gbFilters[d]) {
                             var filter = new Filter;
                             filter.tagk = d;
-                            filter.type = "literal_or";
                             filter.groupBy = true;
                             q.gbFilters[d] = filter;
                         }
                         if (!q.nGbFilters[d]) {
                             var filter = new Filter;
                             filter.tagk = d;
-                            filter.type = "literal_or";
                             q.nGbFilters[d] = filter;
                         }
                     }
@@ -1997,6 +1999,22 @@ bosunControllers.controller('GraphCtrl', ['$scope', '$http', '$location', '$rout
                 }
                 getMetricMeta(request.queries[i].metric);
             }
+            _.each(request.queries, function (q, qIndex) {
+                request.queries[qIndex].filters = _.map(q.filters, function (filter) {
+                    var f = new Filter(filter);
+                    if (f.filter && f.type) {
+                        if (f.type == "auto") {
+                            if (f.filter.indexOf("*") > -1) {
+                                f.type = f.filter == "*" ? f.type = "wildcard" : "iwildcard";
+                            }
+                            else {
+                                f.type = "literal_or";
+                            }
+                        }
+                    }
+                    return f;
+                });
+            });
             var min = angular.isNumber($scope.min) ? '&min=' + encodeURIComponent($scope.min.toString()) : '';
             var max = angular.isNumber($scope.max) ? '&max=' + encodeURIComponent($scope.max.toString()) : '';
             $scope.animate();
