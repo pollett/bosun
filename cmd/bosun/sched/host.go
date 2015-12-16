@@ -23,7 +23,7 @@ func (s *Schedule) Host(filter string) (map[string]*HostData, error) {
 	}
 	states := s.GetOpenStates()
 	silences := s.Silenced()
-	// These are all fetched by metric since that is how we store it in redis
+	// These are all fetched by metric since that is how we store it in redis,
 	// so this makes for the fastest response
 	tagsByKey := func(metric, hostKey string) (map[string][]opentsdb.TagSet, error) {
 		byKey := make(map[string][]opentsdb.TagSet)
@@ -381,6 +381,18 @@ func (s *Schedule) Host(filter string) (map[string]*HostData, error) {
 				UsedBytes:        used,
 				StatsLastUpdated: timestamp,
 			}
+			for _, m := range hostMetadata {
+				if m.Name != "label" || m.Time.Before(time.Now().Add(-timeFilterAge)) {
+					continue
+				}
+				if !m.Tags.Equal(ts) {
+					continue
+				}
+				if label, ok := m.Value.(string); ok {
+					host.Disks[disk].Label = label
+					break
+				}
+			}
 		}
 		// Get CPU, Memory, Uptime
 		var timestamp int64
@@ -439,6 +451,24 @@ func (s *Schedule) Host(filter string) (map[string]*HostData, error) {
 				case "description", "alias":
 					if iface != nil {
 						iface.Description = val
+					}
+				case "dataStores":
+					dataStores := []string{}
+					err = json.Unmarshal([]byte(val), &dataStores)
+					if err != nil {
+						slog.Errorf("error unmarshalling datastores for host %s while generating host api: %s", host.Name, err)
+					}
+					for _, dataStore := range dataStores {
+						tags := opentsdb.TagSet{"disk": dataStore}.String()
+						total, totalTs, totalErr := s.Search.GetLast("vsphere.disk.space_total", tags, false)
+						used, usedTs, usedErr := s.Search.GetLast("vsphere.disk.space_used", tags, false)
+						if totalErr != nil || usedErr != nil || totalTs < 1 || usedTs < 1 {
+							continue
+						}
+						host.Disks[dataStore] = &Disk{
+							TotalBytes: total,
+							UsedBytes:  used,
+						}
 					}
 				case "mac":
 					if iface != nil {
@@ -592,7 +622,7 @@ func (s *Schedule) Host(filter string) (map[string]*HostData, error) {
 	return hosts, nil
 }
 
-func processHostIncidents(host *HostData, states States, silences map[models.AlertKey]Silence) {
+func processHostIncidents(host *HostData, states States, silences map[models.AlertKey]models.Silence) {
 	for ak, state := range states {
 		if stateHost, ok := state.Group["host"]; !ok {
 			continue
@@ -642,6 +672,7 @@ type HostInterface struct {
 type Disk struct {
 	UsedBytes        float64
 	TotalBytes       float64
+	Label            string
 	StatsLastUpdated int64
 }
 

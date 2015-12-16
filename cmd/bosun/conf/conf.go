@@ -317,6 +317,7 @@ type Notification struct {
 	Timeout      time.Duration
 	ContentType  string
 	RunOnActions bool
+	UseBody      bool
 
 	next      string
 	email     string
@@ -1089,6 +1090,8 @@ func (c *Conf) loadNotification(s *parse.SectionNode) {
 			n.Body = tmpl
 		case "runOnActions":
 			n.RunOnActions = v == "true"
+		case "useBody":
+			n.UseBody = v == "true"
 		default:
 			c.errorf("unknown key %s", k)
 		}
