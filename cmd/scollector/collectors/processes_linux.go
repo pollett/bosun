@@ -162,12 +162,14 @@ func linuxProcMonitor(w *WatchedProc, md *opentsdb.MultiDataPoint) error {
 		return fmt.Errorf("failed to get core count: %v", err)
 	}
 	tsName := opentsdb.TagSet{"name": w.Name}
-	Add(md, osProcCPU, float64(totalCPU)/float64(coreCount), tsName, metadata.Counter, metadata.Pct, osProcCPUDesc)
-	Add(md, osProcMemReal, totalRSSMem*int64(os.Getpagesize()), tsName, metadata.Gauge, metadata.Bytes, osProcMemRealDesc)
-	Add(md, osProcMemVirtual, totalVirtualMem, tsName, metadata.Gauge, metadata.Bytes, osProcMemVirtualDesc)
+	if processCount > 0 {
+		Add(md, osProcCPU, float64(totalCPU)/float64(coreCount), tsName, metadata.Counter, metadata.Pct, osProcCPUDesc)
+		Add(md, osProcMemReal, totalRSSMem*int64(os.Getpagesize()), tsName, metadata.Gauge, metadata.Bytes, osProcMemRealDesc)
+		Add(md, osProcMemVirtual, totalVirtualMem, tsName, metadata.Gauge, metadata.Bytes, osProcMemVirtualDesc)
+		Add(md, osProcCount, processCount, tsName, metadata.Gauge, metadata.Process, osProcCountDesc)
+	}
 	if w.IncludeCount {
 		Add(md, "linux.proc.count", processCount, tsName, metadata.Gauge, metadata.Process, descLinuxProcCount)
-		Add(md, osProcCount, processCount, tsName, metadata.Gauge, metadata.Process, osProcCountDesc)
 	}
 	return err
 }
@@ -278,7 +280,7 @@ func NewWatchedProc(params conf.ProcessParams) (*WatchedProc, error) {
 		return nil, fmt.Errorf("bad process name: %v", params.Name)
 	}
 	return &WatchedProc{
-		Command:      params.Command,
+		Command:      regexp.MustCompile(params.Command),
 		Name:         params.Name,
 		IncludeCount: params.IncludeCount,
 		Processes:    make(map[string]int),
@@ -288,7 +290,7 @@ func NewWatchedProc(params conf.ProcessParams) (*WatchedProc, error) {
 }
 
 type WatchedProc struct {
-	Command      string
+	Command      *regexp.Regexp
 	Name         string
 	IncludeCount bool
 	Processes    map[string]int
@@ -302,7 +304,7 @@ func (w *WatchedProc) Check(procs []*Process) {
 		if _, ok := w.Processes[l.Pid]; ok {
 			continue
 		}
-		if !strings.Contains(l.Command, w.Command) {
+		if !w.Command.MatchString(l.Command) {
 			continue
 		}
 		if !w.ArgMatch.MatchString(l.Arguments) {
@@ -333,4 +335,15 @@ func (i *idPool) get() int {
 
 func (i *idPool) put(v int) {
 	i.free = append(i.free, v)
+}
+
+// InContainer detects if a process is running in a Linux container.
+func InContainer(pid string) bool {
+	pidNameSpaceFile := fmt.Sprintf("/proc/%v/ns/pid", pid)
+	if pidNameSpace, err := os.Readlink(pidNameSpaceFile); err == nil {
+		if initNameSpace, err := os.Readlink("/proc/1/ns/pid"); err == nil {
+			return initNameSpace != pidNameSpace
+		}
+	}
+	return false
 }

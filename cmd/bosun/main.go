@@ -16,8 +16,8 @@ import (
 	"strings"
 	"syscall"
 	"time"
-	"bosun.org/_third_party/github.com/facebookgo/httpcontrol"
-	"bosun.org/_third_party/gopkg.in/fsnotify.v1"
+
+	"bosun.org/_version"
 	"bosun.org/cmd/bosun/conf"
 	"bosun.org/cmd/bosun/sched"
 	"bosun.org/cmd/bosun/web"
@@ -27,7 +27,8 @@ import (
 	"bosun.org/opentsdb"
 	"bosun.org/slog"
 	"bosun.org/util"
-	"bosun.org/version"
+	"github.com/facebookgo/httpcontrol"
+	"gopkg.in/fsnotify.v1"
 )
 
 type bosunHttpTransport struct {
@@ -137,6 +138,12 @@ func main() {
 			slog.Infoln("readonly relay at", ts.URL, "to", tsdbHost)
 			tsdbHost, _ = url.Parse(ts.URL)
 			c.TSDBHost = tsdbHost.Host
+		}
+	}
+	if c.InternetProxy != "" {
+		web.InternetProxy, err = url.Parse(c.InternetProxy)
+		if err != nil {
+			slog.Fatalf("InternetProxy error: %s", err)
 		}
 	}
 	if *flagQuiet {
