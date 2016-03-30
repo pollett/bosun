@@ -58,6 +58,8 @@ func init() {
 	http.DefaultClient = client
 	opentsdb.DefaultClient = client
 	graphite.DefaultClient = client
+
+
 }
 
 var (
@@ -69,11 +71,13 @@ var (
 	flagNoChecks = flag.Bool("n", false, "no-checks: don't run the checks at the run interval")
 	flagDev      = flag.Bool("dev", false, "enable dev mode: use local resources; no syslog")
 	flagVersion  = flag.Bool("version", false, "Prints the version and exits")
-
+  instanceName string
 	mains []func()
 )
 
 func main() {
+	instanceName = os.Getenv("BOSUN_NAME")
+
 	flag.Parse()
 	if *flagVersion {
 		fmt.Println(version.GetVersionInfo("bosun"))

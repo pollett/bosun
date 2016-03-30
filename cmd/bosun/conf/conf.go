@@ -44,6 +44,7 @@ type Conf struct {
 	EmailFrom       string
 	StateFile       string
 	LedisDir        string
+	LedisBindAddr   string
 
 	RedisHost     string
 	RedisDb       int
@@ -258,6 +259,7 @@ type Alert struct {
 	UnjoinedOK       bool `json:",omitempty"`
 	Log              bool
 	RunEvery         int
+	RunAt		 string
 	returnType       models.FuncType
 
 	template string
@@ -362,6 +364,7 @@ func New(name, text string) (c *Conf, err error) {
 		HTTPListen:       ":8070",
 		StateFile:        "bosun.state",
 		LedisDir:         "ledis_data",
+		LedisBindAddr:    "127.0.0.1:9565",
 		MinGroupSize:     5,
 		PingDuration:     time.Hour * 24,
 		ResponseLimit:    1 << 20, // 1MB
@@ -563,6 +566,8 @@ func (c *Conf) loadGlobal(p *parse.PairNode) {
 		c.InternetProxy = v
 	case "ledisDir":
 		c.LedisDir = v
+	case "ledisBindAddr":
+		c.LedisBindAddr = v
 	case "redisHost":
 		c.RedisHost = v
 	case "redisPassword":
@@ -956,6 +961,9 @@ func (c *Conf) loadAlert(s *parse.SectionNode) {
 			if err != nil {
 				c.error(err)
 			}
+		case "runAt":
+				a.RunAt = v
+
 		default:
 			c.errorf("unknown key %s", p.key)
 		}

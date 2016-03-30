@@ -1,2 +1,5 @@
 cmd/bosun/dev.conf
+cmd/bosun/bosun
+**/bosun.state
+**/ledis_data
 docs/.jekyll-metadata

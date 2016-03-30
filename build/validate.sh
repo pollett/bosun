@@ -60,8 +60,8 @@ if [ "$GOGENERATEDIFF" != '' ]; then
     echo "$GOGENERATEDIFF"
 	BUILDMSG="${BUILDMSG}go generate needs to run. "
 #    GOGENERATEDIFFRESULT=1
-    git diff
 fi
+
 
 echo -e "\nRunning go test bosun.org/..."
 go test -v $PKGS

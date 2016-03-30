@@ -9,6 +9,7 @@ import (
 	"net/url"
 	"strings"
 	"time"
+	"log"
 )
 
 const requestErrFmt = "graphite RequestError (%s): %s"
@@ -64,6 +65,9 @@ func (r *Request) Query(host string, header http.Header) (Response, error) {
 		}
 		r.URL.User = u.User
 	}
+
+	log.Printf("Graphite request %v \n",r.URL)
+
 	req, err := http.NewRequest("GET", r.URL.String(), nil)
 	if err != nil {
 		return nil, fmt.Errorf(requestErrFmt, r.URL, "NewRequest failed: "+err.Error())

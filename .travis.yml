@@ -3,17 +3,15 @@ sudo: false
 go:
   - 1.6
 
-notifications:
-  email: false
-  slack: bosun:2Z0edJEDfXMDnhg94uLNKzNj
+
 
 install:
-  - rsync -az ${TRAVIS_BUILD_DIR}/ $HOME/gopath/src/bosun.org/
-  - export GOPATH=$HOME/gopath #Fix gopath. Original has trailing :
-  - chmod +x $GOPATH/src/bosun.org/build/validate.sh
-  - go get golang.org/x/tools/cmd/vet
-  - go get github.com/captncraig/setStatus
-  - npm i -g typescript@1.5.3
+- rsync -az ${TRAVIS_BUILD_DIR}/ $HOME/gopath/src/bosun.org/
+- export GOPATH=$HOME/gopath
+- chmod +x $GOPATH/src/bosun.org/build/validate.sh
+- go get golang.org/x/tools/cmd/vet
+- go get github.com/captncraig/setStatus
+- npm i -g typescript@1.5.3
 
 script: $GOPATH/src/bosun.org/build/build.sh
 deploy:
