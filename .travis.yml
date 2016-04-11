@@ -9,7 +9,7 @@ install:
 - rsync -az ${TRAVIS_BUILD_DIR}/ $HOME/gopath/src/bosun.org/
 - export GOPATH=$HOME/gopath
 - chmod +x $GOPATH/src/bosun.org/build/validate.sh
-- go get golang.org/x/tools/cmd/vet
+# - go get golang.org/x/tools/cmd/vet
 - go get github.com/captncraig/setStatus
 - npm i -g typescript@1.5.3
 

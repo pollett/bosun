@@ -214,7 +214,7 @@ type ElasticHosts []string
 func (e ElasticHosts) InitClient() error {
 	if esClient == nil {
 		var err error
-		esClient, err = elastic.NewClient(elastic.SetURL(e...), elastic.SetMaxRetries(10))
+		esClient, err = elastic.NewClient(elastic.SetURL(e...), elastic.SetMaxRetries(10), elastic.SetSniff(false))
 		if err != nil {
 			return err
 		}
