@@ -26,3 +26,4 @@ func setSyslog() {
 	log.Println("enabling syslog")
 	log.SetOutput(w)
 }
+// test
