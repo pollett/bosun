@@ -3,6 +3,7 @@ package expr
 import (
 	"encoding/json"
 	"fmt"
+	"log"
 	"math"
 	"reflect"
 	"strconv"
@@ -23,6 +24,12 @@ var TSDB = map[string]parse.Func{
 		Tags:   tagQuery,
 		F:      Band,
 	},
+	"bandRange": {
+		Args:   []models.FuncType{models.TypeString, models.TypeString, models.TypeString, models.TypeString, models.TypeScalar},
+		Return: models.TypeSeriesSet,
+		Tags:   tagQuery,
+		F:      BandRange,
+	},
 	"shiftBand": {
 		Args:   []models.FuncType{models.TypeString, models.TypeString, models.TypeString, models.TypeScalar},
 		Return: models.TypeSeriesSet,
@@ -33,8 +40,7 @@ var TSDB = map[string]parse.Func{
 		Args:   []models.FuncType{models.TypeString, models.TypeString, models.TypeString, models.TypeScalar},
 		Return: models.TypeSeriesSet,
 		Tags:   tagQuery,
-		F:      Over,
-	},
+		F:      Over},
 	"change": {
 		Args:   []models.FuncType{models.TypeString, models.TypeString, models.TypeString},
 		Return: models.TypeNumberSet,
@@ -155,68 +161,77 @@ func bandTSDB(e *State, T miniprofiler.Timer, query, duration, period string, nu
 	return
 }
 
-func Window(e *State, T miniprofiler.Timer, query, duration, period string, num float64, rfunc string) (*Results, error) {
-	fn, ok := e.GetFunction(rfunc)
-	if !ok {
-		return nil, fmt.Errorf("expr: Window: no %v function", rfunc)
-	}
-	windowFn := reflect.ValueOf(fn.F)
-	bandFn := func(results *Results, resp *opentsdb.Response, offset time.Duration) error {
-		values := make(Series)
-		min := int64(math.MaxInt64)
-		for k, v := range resp.DPS {
-			i, e := strconv.ParseInt(k, 10, 64)
-			if e != nil {
-				return e
+func bandRangeTSDB(e *State, T miniprofiler.Timer, query, rangeStart, rangeEnd, period string, num float64, rfunc func(*Results, *opentsdb.Response) error) (r *Results, err error) {
+
+	r = new(Results)
+	r.IgnoreOtherUnjoined = true
+	r.IgnoreUnjoined = true
+	T.Step("bandRange", func(T miniprofiler.Timer) {
+		var from, to, p opentsdb.Duration
+		from, err = opentsdb.ParseDuration(rangeStart)
+		if err != nil {
+			return
+		}
+
+		to, err = opentsdb.ParseDuration(rangeEnd)
+		if err != nil {
+			return
+		}
+
+		p, err = opentsdb.ParseDuration(period)
+		if err != nil {
+			return
+		}
+
+		if num < 1 || num > 100 {
+			err = fmt.Errorf("num out of bounds")
+		}
+		var q *opentsdb.Query
+		q, err = opentsdb.ParseQuery(query, e.TSDBContext.Version())
+		if err != nil {
+			return
+		}
+
+		if err = e.Search.Expand(q); err != nil {
+			return
+		}
+
+		req := opentsdb.Request{
+			Queries: []*opentsdb.Query{q},
+		}
+		now := e.now
+
+		req.End = now.Unix()
+		st := now.Add(time.Duration(from)).Unix()
+		req.Start = st
+
+		if err = req.SetTime(e.now); err != nil {
+			return
+		}
+
+		for i := 0; i < int(num); i++ {
+			now = now.Add(time.Duration(-p))
+			end := now.Add(time.Duration(-to)).Unix()
+			req.End = &end
+			st := now.Add(time.Duration(-from)).Unix()
+			req.Start = &st
+
+			var s opentsdb.ResponseSet
+			s, err = timeTSDBRequest(e, T, &req)
+			if err != nil {
+				return
 			}
-			if i < min {
-				min = i
-			}
-			values[time.Unix(i, 0).UTC()] = float64(v)
-		}
-		if len(values) == 0 {
-			return nil
-		}
-		callResult := &Results{
-			Results: ResultSlice{
-				&Result{
-					Group: resp.Tags,
-					Value: values,
-				},
-			},
-		}
-		fnResult := windowFn.Call([]reflect.Value{reflect.ValueOf(e), reflect.ValueOf(T), reflect.ValueOf(callResult)})
-		if !fnResult[1].IsNil() {
-			if err := fnResult[1].Interface().(error); err != nil {
-				return err
+			for _, res := range s {
+				if e.Squelched(res.Tags) {
+					continue
+				}
+				if err = rfunc(r, res); err != nil {
+					return
+				}
 			}
 		}
-		minTime := time.Unix(min, 0).UTC()
-		fres := float64(fnResult[0].Interface().(*Results).Results[0].Value.(Number))
-		found := false
-		for _, result := range results.Results {
-			if result.Group.Equal(resp.Tags) {
-				found = true
-				v := result.Value.(Series)
-				v[minTime] = fres
-				break
-			}
-		}
-		if !found {
-			results.Results = append(results.Results, &Result{
-				Group: resp.Tags,
-				Value: Series{
-					minTime: fres,
-				},
-			})
-		}
-		return nil
-	}
-	r, err := bandTSDB(e, T, query, duration, period, num, bandFn)
-	if err != nil {
-		err = fmt.Errorf("expr: Window: %v", err)
-	}
-	return r, err
+	})
+	return
 }
 
 func windowCheck(t *parse.Tree, f *parse.FuncNode) error {
@@ -432,4 +447,108 @@ func Change(e *State, T miniprofiler.Timer, query, sduration, eduration string) 
 
 func change(dps Series, args ...float64) float64 {
 	return avg(dps) * args[0]
+}
+
+func Window(e *State, T miniprofiler.Timer, query, duration, period string, num float64, rfunc string) (*Results, error) {
+	fn, ok := e.GetFunction(rfunc)
+	if !ok {
+		return nil, fmt.Errorf("expr: Window: no %v function", rfunc)
+	}
+	windowFn := reflect.ValueOf(fn.F)
+	bandFn := func(results *Results, resp *opentsdb.Response, offset time.Duration) error {
+		values := make(Series)
+		min := int64(math.MaxInt64)
+		for k, v := range resp.DPS {
+			i, e := strconv.ParseInt(k, 10, 64)
+			if e != nil {
+				return e
+			}
+			if i < min {
+				min = i
+			}
+			values[time.Unix(i, 0).UTC()] = float64(v)
+		}
+		if len(values) == 0 {
+			return nil
+		}
+		callResult := &Results{
+			Results: ResultSlice{
+				&Result{
+					Group: resp.Tags,
+					Value: values,
+				},
+			},
+		}
+		fnResult := windowFn.Call([]reflect.Value{reflect.ValueOf(e), reflect.ValueOf(T), reflect.ValueOf(callResult)})
+		if !fnResult[1].IsNil() {
+			if err := fnResult[1].Interface().(error); err != nil {
+				return err
+			}
+		}
+		minTime := time.Unix(min, 0).UTC()
+		fres := float64(fnResult[0].Interface().(*Results).Results[0].Value.(Number))
+		found := false
+		for _, result := range results.Results {
+			if result.Group.Equal(resp.Tags) {
+				found = true
+				v := result.Value.(Series)
+				v[minTime] = fres
+				break
+			}
+		}
+		if !found {
+			results.Results = append(results.Results, &Result{
+				Group: resp.Tags,
+				Value: Series{
+					minTime: fres,
+				},
+			})
+		}
+		return nil
+	}
+	r, err := bandTSDB(e, T, query, duration, period, num, bandFn)
+	if err != nil {
+		err = fmt.Errorf("expr: Window: %v", err)
+	}
+	return r, err
+}
+
+func BandRange(e *State, T miniprofiler.Timer, query, start, end, period string, num float64) (r *Results, err error) {
+	log.Printf("in bandRange")
+
+	r, err = bandRangeTSDB(e, T, query, start, end, period, num, func(r *Results, res *opentsdb.Response) error {
+		newarr := true
+		for _, a := range r.Results {
+			if !a.Group.Equal(res.Tags) {
+				continue
+			}
+			newarr = false
+			values := a.Value.(Series)
+			for k, v := range res.DPS {
+				i, e := strconv.ParseInt(k, 10, 64)
+				if e != nil {
+					return e
+				}
+				values[time.Unix(i, 0).UTC()] = float64(v)
+			}
+		}
+		if newarr {
+			values := make(Series)
+			a := &Result{Group: res.Tags}
+			for k, v := range res.DPS {
+				i, e := strconv.ParseInt(k, 10, 64)
+				if e != nil {
+					return e
+				}
+				values[time.Unix(i, 0).UTC()] = float64(v)
+			}
+			a.Value = values
+			r.Results = append(r.Results, a)
+		}
+		return nil
+	})
+	if err != nil {
+		err = fmt.Errorf("expr: BandRange: %v", err)
+	}
+	return
 }
