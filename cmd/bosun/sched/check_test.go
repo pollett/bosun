@@ -77,14 +77,16 @@ func TestCheckFlapping(t *testing.T) {
 	*/
 
 	transitions := []stateTransition{
-		{models.StWarning, true},
+		{models.StWarning, true}, // 0
 		{models.StNormal, true},
-		{models.StWarning, true},
+		{models.StWarning, true}, // 2
 		{models.StNormal, true},
-		{models.StCritical, true},
+		{models.StCritical, true}, // 4
 		{models.StWarning, false},
-		{models.StCritical, false},
+		{models.StCritical, false}, // 6
 		{models.StNormal, true},
+		{models.StWarning, true}, // 8
+		{models.StCritical, true},
 	}
 
 	for i, trans := range transitions {
@@ -99,6 +101,12 @@ func TestCheckFlapping(t *testing.T) {
 	}
 	r.Events[ak].Status = models.StNormal
 	s.RunHistory(r)
+
+	// VICTOROPS: We should alert on return to normal
+	if !hasNots() {
+		t.Fatal("expected notification")
+	}
+
 	// Close the alert, so it should notify next time.
 	if err := s.Action("", "", models.ActionClose, ak); err != nil {
 		t.Fatal(err)

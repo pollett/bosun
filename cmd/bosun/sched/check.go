@@ -124,6 +124,7 @@ func (s *Schedule) runHistory(r *RunHistory, ak models.AlertKey, event *models.E
 	if err != nil {
 		return
 	}
+
 	defer func() {
 		// save unless incident is new and closed (log alert)
 		if incident != nil && (incident.Id != 0 || incident.Open) {
@@ -153,7 +154,6 @@ func (s *Schedule) runHistory(r *RunHistory, ak models.AlertKey, event *models.E
 		shouldNotify = true
 	}
 
-
 	// VICTOROPS INTEGRATION: Enables notification of incidents which have returned to normal (Sends normNotification defined in config)
 	if event.Status <= models.StNormal && (incident.CurrentStatus == models.StWarning || incident.CurrentStatus == models.StCritical) {
 		slog.Infof("TRIGGER_RESOLVED: from %s to %s", incident.CurrentStatus, event.Status)
@@ -161,11 +161,16 @@ func (s *Schedule) runHistory(r *RunHistory, ak models.AlertKey, event *models.E
 	}
 
 	// VICTOROPS INTEGRATION:  Enables notification of Incidents which have returned to normal but are now back to warning or critical. i.e. enable Flapping
-	if incident.CurrentStatus == models.StNormal && (event.Status == models.StCritical || event.Status == models.StWarning) {
+	if incident.CurrentStatus <= models.StNormal && (event.Status == models.StCritical || event.Status == models.StWarning) {
 		slog.Infof("TRIGGER_REALERT: from %s to %s", incident.CurrentStatus, event.Status)
 		shouldNotify = true
 	}
 
+	// VICTOROPS INTEGRATION:  Enables notification of Incidents which have gone from warning to critical
+	if incident.WorstStatus < event.Status {
+		slog.Infof("TRIGGER_ALERT: from %s to %s", incident.CurrentStatus, event.Status)
+		shouldNotify = true
+	}
 
 	// set state.Result according to event result
 	if event.Status == models.StCritical {
@@ -181,6 +186,10 @@ func (s *Schedule) runHistory(r *RunHistory, ak models.AlertKey, event *models.E
 	if event.Status > incident.WorstStatus {
 		incident.WorstStatus = event.Status
 		shouldNotify = true
+	}
+	if event.Status <= models.StNormal {
+		// VICTOROPS INTEGRATION: set worst to normal if return to normal status
+		incident.WorstStatus = event.Status
 	}
 	if event.Status != incident.CurrentStatus {
 		incident.Events = append(incident.Events, *event)
