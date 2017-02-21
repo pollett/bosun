@@ -3,13 +3,13 @@ package expr
 import (
 	"encoding/json"
 	"fmt"
+	"log"
 	"math"
 	"reflect"
 	"sort"
 	"strconv"
 	"strings"
 	"time"
-	"log"
 
 	"bosun.org/cmd/bosun/expr/parse"
 	"bosun.org/graphite"
@@ -125,7 +125,7 @@ var TSDB = map[string]parse.Func{
 		Args:   []models.FuncType{models.TypeString, models.TypeString, models.TypeString, models.TypeScalar},
 		Return: models.TypeSeriesSet,
 		Tags:   tagQuery,
-		F:      Over,	},
+		F:      Over},
 	"change": {
 		Args:   []models.FuncType{models.TypeString, models.TypeString, models.TypeString},
 		Return: models.TypeNumberSet,
@@ -408,10 +408,15 @@ func SeriesFunc(e *State, T miniprofiler.Timer, tags string, pairs ...float64) (
 	if len(pairs)%2 != 0 {
 		return nil, fmt.Errorf("uneven number of time stamps and values")
 	}
-	group, err := opentsdb.ParseTags(tags)
-	if err != nil {
-		return nil, fmt.Errorf("unable to parse tags: %v", err)
+	group := opentsdb.TagSet{}
+	if tags != "" {
+		var err error
+		group, err = opentsdb.ParseTags(tags)
+		if err != nil {
+			return nil, fmt.Errorf("unable to parse tags: %v", err)
+		}
 	}
+
 	series := make(Series)
 	for i := 0; i < len(pairs); i += 2 {
 		series[time.Unix(int64(pairs[i]), 0)] = pairs[i+1]
@@ -761,7 +766,6 @@ func GraphiteBand(e *State, T miniprofiler.Timer, query, duration, period, forma
 	return
 }
 
-
 func GraphiteBandRange(e *State, T miniprofiler.Timer, query, rangeStart, rangeEnd, period, format string, num float64) (r *Results, err error) {
 	r = new(Results)
 	r.IgnoreOtherUnjoined = true
@@ -798,7 +802,7 @@ func GraphiteBandRange(e *State, T miniprofiler.Timer, query, rangeStart, rangeE
 			req.End = &end
 			st := now.Add(time.Duration(-from))
 			req.Start = &st
-			log.Printf("Executing graphite band  st %v end %v \n", st,end)
+			log.Printf("Executing graphite band  st %v end %v \n", st, end)
 			var s graphite.Response
 			s, err = timeGraphiteRequest(e, T, req)
 			if err != nil {
@@ -840,7 +844,6 @@ func GraphiteBandRange(e *State, T miniprofiler.Timer, query, rangeStart, rangeE
 	}
 	return
 }
-
 
 func bandTSDB(e *State, T miniprofiler.Timer, query, duration, period string, num float64, rfunc func(*Results, *opentsdb.Response, time.Duration) error) (r *Results, err error) {
 	r = new(Results)
@@ -928,7 +931,7 @@ func bandRangeTSDB(e *State, T miniprofiler.Timer, query, rangeStart, rangeEnd, 
 			err = fmt.Errorf("num out of bounds")
 		}
 		var q *opentsdb.Query
-		q, err = opentsdb.ParseQuery(query,e.tsdbContext.Version())
+		q, err = opentsdb.ParseQuery(query, e.tsdbContext.Version())
 		if err != nil {
 			return
 		}
@@ -942,9 +945,9 @@ func bandRangeTSDB(e *State, T miniprofiler.Timer, query, rangeStart, rangeEnd, 
 		}
 		now := e.now
 
-	  req.End = now.Unix()
+		req.End = now.Unix()
 		st := now.Add(time.Duration(from)).Unix()
-		 req.Start = st
+		req.Start = st
 
 		if err = req.SetTime(e.now); err != nil {
 			return
@@ -1812,8 +1815,13 @@ func Ungroup(e *State, T miniprofiler.Timer, d *Results) (*Results, error) {
 	if len(d.Results) != 1 {
 		return nil, fmt.Errorf("ungroup: requires exactly one group")
 	}
-	d.Results[0].Group = nil
-	return d, nil
+	return &Results{
+		Results: ResultSlice{
+			&Result{
+				Value: Scalar(d.Results[0].Value.Value().(Number)),
+			},
+		},
+	}, nil
 }
 
 func Transpose(e *State, T miniprofiler.Timer, d *Results, gp string) (*Results, error) {
