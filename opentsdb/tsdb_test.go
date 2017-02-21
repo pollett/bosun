@@ -291,7 +291,7 @@ func TestQueryString(t *testing.T) {
 	}
 }
 
-func TestValidTag(t *testing.T) {
+func TestValidTSDBString(t *testing.T) {
 	tests := map[string]bool{
 		"abcXYZ012_./-": true,
 
@@ -300,7 +300,7 @@ func TestValidTag(t *testing.T) {
 		"a=b": false,
 	}
 	for s, v := range tests {
-		r := ValidTag(s)
+		r := ValidTSDBString(s)
 		if v != r {
 			t.Errorf("%v: got %v, expected %v", s, r, v)
 		}
