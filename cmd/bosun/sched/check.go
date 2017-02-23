@@ -163,7 +163,7 @@ func (s *Schedule) runHistory(r *RunHistory, ak models.AlertKey, event *models.E
 	}
 
 	// VICTOROPS INTEGRATION:  Enables notification of Incidents which have gone from warning to critical
-	if incident.WorstStatus < event.Status {
+	if !shouldNotify && incident.WorstStatus < event.Status {
 		slog.Infof("TRIGGER_ALERT: from %s to %s", incident.CurrentStatus, event.Status)
 		shouldNotify = true
 	}
