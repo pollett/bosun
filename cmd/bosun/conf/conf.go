@@ -63,6 +63,7 @@ type Conf struct {
 	Lookups          map[string]*Lookup
 	Squelch          Squelches `json:"-"`
 	Quiet            bool
+	SkipLast         bool
 	NoSleep          bool
 	ShortURLKey      string
 	InternetProxy    string
@@ -296,6 +297,35 @@ func (ns *Notifications) Get(c *Conf, tags opentsdb.TagSet) map[string]*Notifica
 	return nots
 }
 
+// GetNotificationChains returns the warn or crit notification chains for a configured
+// alert. Each chain is a list of notification names. If a notification name
+// as already been seen in the chain it ends the list with the notification
+// name with a of "..." which indicates that the chain will loop.
+func GetNotificationChains(c *Conf, n map[string]*Notification) [][]string {
+	chains := [][]string{}
+	for _, root := range n {
+		chain := []string{}
+		seen := make(map[string]bool)
+		var walkChain func(next *Notification)
+		walkChain = func(next *Notification) {
+			if next == nil {
+				chains = append(chains, chain)
+				return
+			}
+			if seen[next.Name] {
+				chain = append(chain, fmt.Sprintf("...%v", next.Name))
+				chains = append(chains, chain)
+				return
+			}
+			chain = append(chain, next.Name)
+			seen[next.Name] = true
+			walkChain(next.Next)
+		}
+		walkChain(root)
+	}
+	return chains
+}
+
 // parseNotifications parses the comma-separated string v for notifications and
 // returns them.
 func (c *Conf) parseNotifications(v string) (map[string]*Notification, error) {
@@ -339,10 +369,6 @@ type Notification struct {
 	email     string
 	post, get string
 	body      string
-}
-
-func (n *Notification) MarshalJSON() ([]byte, error) {
-	return nil, fmt.Errorf("conf: cannot json marshal notifications")
 }
 
 type Vars map[string]string
@@ -789,6 +815,9 @@ var defaultFuncs = ttemplate.FuncMap{
 	"short": func(v string) string {
 		return strings.SplitN(v, ".", 2)[0]
 	},
+	"html": func(value interface{}) htemplate.HTML {
+		return htemplate.HTML(fmt.Sprint(value))
+	},
 	"parseDuration": time.ParseDuration,
 }
 
@@ -1148,7 +1177,7 @@ var exRE = regexp.MustCompile(`\$(?:[\w.]+|\{[\w.]+\})`)
 func (c *Conf) Expand(v string, vars map[string]string, ignoreBadExpand bool) string {
 	ss := exRE.ReplaceAllStringFunc(v, func(s string) string {
 		var n string
-		if strings.HasPrefix(s, "${") && strings.HasSuffix(s, "}") {
+		if strings.HasPrefix(s, "${") && strings.HasSuffix(s, "}") && !ignoreBadExpand {
 			s = "$" + s[2:len(s)-1]
 		}
 		if _n, ok := vars[s]; ok {

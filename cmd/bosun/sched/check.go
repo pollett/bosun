@@ -9,13 +9,11 @@ import (
 	"bosun.org/cmd/bosun/conf"
 	"bosun.org/cmd/bosun/expr"
 	"bosun.org/collect"
-	"bosun.org/graphite"
 	"bosun.org/metadata"
 	"bosun.org/models"
 	"bosun.org/opentsdb"
 	"bosun.org/slog"
 	"github.com/MiniProfiler/go/miniprofiler"
-	"github.com/influxdata/influxdb/client"
 )
 
 func init() {
@@ -49,14 +47,9 @@ func NewIncident(ak models.AlertKey) *models.IncidentState {
 }
 
 type RunHistory struct {
-	Cache           *cache.Cache
-	Start           time.Time
-	Context         opentsdb.Context
-	GraphiteContext graphite.Context
-	InfluxConfig    client.Config
-	Logstash        expr.LogstashElasticHosts
-	Elastic         expr.ElasticHosts
-
+	Cache    *cache.Cache
+	Start    time.Time
+	Backends *expr.Backends
 	Events   map[models.AlertKey]*models.Event
 	schedule *Schedule
 }
@@ -70,17 +63,20 @@ func (rh *RunHistory) AtTime(t time.Time) *RunHistory {
 }
 
 func (s *Schedule) NewRunHistory(start time.Time, cache *cache.Cache) *RunHistory {
-	return &RunHistory{
-		Cache:           cache,
-		Start:           start,
-		Events:          make(map[models.AlertKey]*models.Event),
-		Context:         s.Conf.TSDBContext(),
-		GraphiteContext: s.Conf.GraphiteContext(),
-		InfluxConfig:    s.Conf.InfluxConfig,
-		Logstash:        s.Conf.LogstashElasticHosts,
-		Elastic:         s.Conf.ElasticHosts,
-		schedule:        s,
+	r := &RunHistory{
+		Cache:    cache,
+		Start:    start,
+		Events:   make(map[models.AlertKey]*models.Event),
+		schedule: s,
+		Backends: &expr.Backends{
+			TSDBContext:     s.Conf.TSDBContext(),
+			GraphiteContext: s.Conf.GraphiteContext(),
+			InfluxConfig:    s.Conf.InfluxConfig,
+			LogstashHosts:   s.Conf.LogstashElasticHosts,
+			ElasticHosts:    s.Conf.ElasticHosts,
+		},
 	}
+	return r
 }
 
 // RunHistory processes an event history and triggers notifications if needed.
@@ -167,7 +163,7 @@ func (s *Schedule) runHistory(r *RunHistory, ak models.AlertKey, event *models.E
 	}
 
 	// VICTOROPS INTEGRATION:  Enables notification of Incidents which have gone from warning to critical
-	if incident.WorstStatus < event.Status {
+	if !shouldNotify && incident.WorstStatus < event.Status {
 		slog.Infof("TRIGGER_ALERT: from %s to %s", incident.CurrentStatus, event.Status)
 		shouldNotify = true
 	}
@@ -269,7 +265,7 @@ func (s *Schedule) runHistory(r *RunHistory, ak models.AlertKey, event *models.E
 	if si := silenced(ak); si != nil && event.Status == models.StNormal {
 		go func(ak models.AlertKey) {
 			slog.Infof("auto close %s because was silenced", ak)
-			err := s.Action("bosun", "Auto close because was silenced.", models.ActionClose, ak)
+			err := s.ActionByAlertKey("bosun", "Auto close because was silenced.", models.ActionClose, ak)
 			if err != nil {
 				slog.Errorln(err)
 			}
@@ -533,6 +529,9 @@ func (s *Schedule) findUnknownAlerts(now time.Time, alert string) []models.Alert
 		return keys
 	}
 	for _, ak := range untouched {
+		if a.Squelch.Squelched(ak.Group()) {
+			continue
+		}
 		keys = append(keys, ak)
 	}
 	return keys
@@ -618,7 +617,13 @@ func (s *Schedule) executeExpr(T miniprofiler.Timer, rh *RunHistory, a *conf.Ale
 	if e == nil {
 		return nil, nil
 	}
-	results, _, err := e.Execute(rh.Context, rh.GraphiteContext, rh.Logstash, rh.Elastic, rh.InfluxConfig, rh.Cache, T, rh.Start, 0, a.UnjoinedOK, s.Search, s.Conf.AlertSquelched(a), s)
+	providers := &expr.BosunProviders{
+		Cache:     rh.Cache,
+		Search:    s.Search,
+		Squelched: s.Conf.AlertSquelched(a),
+		History:   s,
+	}
+	results, _, err := e.Execute(rh.Backends, providers, T, rh.Start, 0, a.UnjoinedOK)
 	return results, err
 }
 

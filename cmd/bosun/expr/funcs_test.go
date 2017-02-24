@@ -20,7 +20,11 @@ func testExpression(eio exprInOut) error {
 	if err != nil {
 		return err
 	}
-	r, _, err := e.Execute(nil, nil, nil, nil, client.Config{}, nil, nil, time.Now(), 0, false, nil, nil, nil)
+	backends := &Backends{
+		InfluxConfig: client.Config{},
+	}
+	providers := &BosunProviders{}
+	r, _, err := e.Execute(backends, providers, nil, queryTime, 0, false)
 	if err != nil {
 		return err
 	}
@@ -82,6 +86,27 @@ func TestToDuration(t *testing.T) {
 		if err != nil {
 			t.Error(err)
 		}
+	}
+}
+
+func TestUngroup(t *testing.T) {
+	dictum := `series("foo=bar", 0, ungroup(last(series("foo=baz", 0, 1))))`
+	err := testExpression(exprInOut{
+		dictum,
+		Results{
+			Results: ResultSlice{
+				&Result{
+					Value: Series{
+						time.Unix(0, 0): 1,
+					},
+					Group: opentsdb.TagSet{"foo": "bar"},
+				},
+			},
+		},
+	})
+
+	if err != nil {
+		t.Error(err)
 	}
 }
 
