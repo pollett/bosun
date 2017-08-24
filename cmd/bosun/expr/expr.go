@@ -20,7 +20,7 @@ import (
 	"github.com/MiniProfiler/go/miniprofiler"
 	"github.com/influxdata/influxdb/client"
 	elasticOld "github.com/olivere/elastic"
-	elastic "gopkg.in/olivere/elastic.v3"
+	elastic "gopkg.in/olivere/elastic.v5"
 )
 
 type State struct {

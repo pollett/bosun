@@ -10,7 +10,8 @@ import (
 	"bosun.org/models"
 	"bosun.org/opentsdb"
 	"github.com/MiniProfiler/go/miniprofiler"
-	elastic "gopkg.in/olivere/elastic.v3"
+	elastic "gopkg.in/olivere/elastic.v5"
+	"context"
 )
 
 // This uses a global client since the elastic client handles connections
@@ -243,7 +244,7 @@ func (e ElasticHosts) Query(r *ElasticRequest) (*elastic.SearchResult, error) {
 		return nil, err
 	}
 	s.Index(indicies...)
-	return s.SearchSource(r.Source).Do()
+	return s.SearchSource(r.Source).Do(context.Background())
 }
 
 // ElasticRequest is a container for the information needed to query elasticsearch or a date
@@ -393,7 +394,7 @@ func ESDateHistogram(e *State, T miniprofiler.Timer, indexer ESIndexer, keystrin
 		for _, v := range ts.Buckets {
 			val := processESBucketItem(v, rstat)
 			if val != nil {
-				series[time.Unix(v.Key/1000, 0).UTC()] = *val
+				series[time.Unix(int64(v.Key/1000), 0).UTC()] = *val
 			}
 		}
 		if len(series) == 0 {
@@ -430,7 +431,7 @@ func ESDateHistogram(e *State, T miniprofiler.Timer, indexer ESIndexer, keystrin
 			for _, v := range ts.Buckets {
 				val := processESBucketItem(v, rstat)
 				if val != nil {
-					series[time.Unix(v.Key/1000, 0).UTC()] = *val
+					series[time.Unix(int64(v.Key/1000), 0).UTC()] = *val
 				}
 			}
 			if len(series) == 0 {
